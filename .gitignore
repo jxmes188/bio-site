@@ -1,0 +1,11 @@
+# Music files (kept local, not uploaded)
+assets/music/*.mp3
+assets/music/*.wav
+assets/music/*.ogg
+assets/music/*.m4a
+
+# Editor / OS junk
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini

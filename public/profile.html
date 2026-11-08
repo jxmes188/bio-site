@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>bio.link — profile</title>
+  <title>loading…</title>
   <meta name="description" content="My personal bio link page." />
-  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="/css/profile.css" />
 </head>
 <body>
   <!-- Background layers -->
@@ -36,7 +36,7 @@
 
       <div class="profile-top">
         <div class="avatar-wrap">
-          <img id="avatar" class="avatar" src="assets/avatar.svg" alt="avatar" />
+          <img id="avatar" class="avatar" src="/img/avatar.svg" alt="avatar" />
           <span id="status-dot" class="status-dot online" title="online"></span>
         </div>
 
@@ -67,7 +67,7 @@
           <span class="presence-status" id="presence-status"></span>
         </div>
         <div class="presence-body">
-          <img id="presence-img" class="presence-img" src="assets/avatar.svg" alt="" />
+          <img id="presence-img" class="presence-img" src="/img/avatar.svg" alt="" />
           <div class="presence-info">
             <div class="presence-name" id="presence-name"></div>
             <div class="presence-activity" id="presence-activity"></div>
@@ -118,11 +118,11 @@
   <!-- Copy toast -->
   <div id="toast" class="toast" hidden></div>
 
-  <script src="js/config.js"></script>
-  <script src="js/icons.js"></script>
-  <script src="js/background.js"></script>
-  <script src="js/cursor.js"></script>
-  <script src="js/main.js"></script>
-  <script src="js/discord.js"></script>
+  <!-- "make your own" button -->
+  <a href="/" class="claim-btn" id="claim-btn">✦ make your own</a>
+
+  <!-- loader.js fetches this user's settings, then loads the rest in order -->
+  <script src="/js/icons.js"></script>
+  <script src="/js/loader.js"></script>
 </body>
 </html>

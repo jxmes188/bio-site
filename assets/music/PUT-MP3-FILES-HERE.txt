@@ -1,6 +1,0 @@
-Put your .mp3 files in this folder, then list them in js/config.js under music.tracks.
-
-Example:
-  tracks: [
-    { title: "My Song", src: "assets/music/my-song.mp3" }
-  ]

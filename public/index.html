@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claim your page</title>
+  <meta name="description" content="Claim your username and build your own bio link page." />
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <div class="glow-bg"></div>
+
+  <div class="home">
+    <nav class="home-nav">
+      <a class="brand" href="/"><img src="/img/favicon.svg" alt="" /><span class="site-name">bio</span></a>
+      <button class="btn btn-ghost btn-sm" id="nav-signin">Sign in</button>
+    </nav>
+
+    <main class="home-main">
+      <section class="hero">
+        <h1>One link.<br /><span class="grad">Your whole vibe.</span></h1>
+        <p>Claim your username, then make the page your own: animated backgrounds, your music, your socials and your live Discord status.</p>
+
+        <form class="claim" id="claim-form">
+          <label class="prefix-input">
+            <span class="prefix site-prefix">site/</span>
+            <input id="claim-input" placeholder="yourname" maxlength="20" autocomplete="off" spellcheck="false" />
+          </label>
+          <button class="btn btn-primary" type="submit">Claim</button>
+        </form>
+
+        <div class="features">
+          <div class="feature"><svg viewBox="0 0 24 24"><path d="M12 3v10.6A4 4 0 1 0 14 17V7h4V3h-6z"/></svg><div><b>Your music</b>Upload songs that play on your page</div></div>
+          <div class="feature"><svg viewBox="0 0 24 24"><path d="M21 3H3v18h18V3zM5 19l3.5-4.5 2.5 3 3.5-4.5L19 19H5z"/></svg><div><b>Custom backgrounds</b>Image, video or animated effects</div></div>
+          <div class="feature"><svg viewBox="0 0 24 24"><path d="M19.6 5.3A17 17 0 0 0 15.4 4l-.5 1a15.6 15.6 0 0 0-5.8 0L8.6 4a17 17 0 0 0-4.2 1.3C1.7 9.3 1 13.2 1.3 17a17 17 0 0 0 5.2 2.6l1.1-1.8c-.6-.2-1.2-.5-1.8-.9l.4-.3a12 12 0 0 0 11.6 0l.4.3c-.6.4-1.2.7-1.8.9l1.1 1.8a17 17 0 0 0 5.2-2.6c.4-4.4-.7-8.3-3.1-11.7z"/></svg><div><b>Live Discord status</b>Name, avatar, game and Spotify</div></div>
+          <div class="feature"><svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg><div><b>Real view counter</b>See how many people visit</div></div>
+        </div>
+      </section>
+
+      <section class="auth-card">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="signup" role="tab">Sign up</button>
+          <button class="tab" data-tab="signin" role="tab">Sign in</button>
+        </div>
+
+        <!-- Sign up -->
+        <form class="auth-form" id="signup-form" novalidate>
+          <h2>Create your page</h2>
+          <p class="sub">Your username becomes your link.</p>
+          <label class="field">
+            <span>Username</span>
+            <span class="prefix-input">
+              <span class="prefix site-prefix">site/</span>
+              <input id="su-username" name="username" maxlength="20" autocomplete="username" spellcheck="false" required />
+            </span>
+            <span class="avail" id="su-avail"></span>
+          </label>
+          <label class="field">
+            <span>Email</span>
+            <input class="input" id="su-email" name="email" type="email" autocomplete="email" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input class="input" id="su-password" name="password" type="password" minlength="8" autocomplete="new-password" required />
+            <span class="hint">At least 8 characters</span>
+          </label>
+          <p class="error-msg" id="su-error"></p>
+          <button class="btn btn-primary" type="submit" id="su-submit">Create account</button>
+        </form>
+
+        <!-- Sign in -->
+        <form class="auth-form" id="signin-form" hidden novalidate>
+          <h2>Welcome back</h2>
+          <p class="sub">Sign in to edit your page.</p>
+          <label class="field">
+            <span>Username or email</span>
+            <input class="input" id="si-login" name="login" autocomplete="username" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input class="input" id="si-password" name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <p class="error-msg" id="si-error"></p>
+          <button class="btn btn-primary" type="submit" id="si-submit">Sign in</button>
+        </form>
+      </section>
+    </main>
+
+    <footer class="home-foot"><span class="site-name">bio</span> · made with ♥</footer>
+  </div>
+
+  <script src="/js/auth.js"></script>
+</body>
+</html>

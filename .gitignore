@@ -1,8 +1,19 @@
-# Music files (kept local, not uploaded)
-assets/music/*.mp3
-assets/music/*.wav
-assets/music/*.ogg
-assets/music/*.m4a
+# Dependencies
+node_modules/
+
+# Server data (database + everything users upload) - never commit
+data/
+uploads/
+
+# Your own local music, not uploaded to GitHub
+local-music/
+*.mp3
+*.wav
+*.ogg
+*.m4a
+
+# Secrets
+.env
 
 # Editor / OS junk
 .vscode/

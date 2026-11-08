@@ -117,10 +117,13 @@
     return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
   }
 
-  if (cfg.type === "video") {
+  if (cfg.type === "video" && cfg.video) {
     canvas.hidden = true;
-    video.src = cfg.video;
+    video.src = encodeURI(cfg.video);
     video.hidden = false;
+  } else if (cfg.type === "image" && cfg.image) {
+    canvas.hidden = true;
+    document.body.style.background = `${cfg.color} url("${encodeURI(cfg.image)}") center / cover no-repeat fixed`;
   } else if (modes[cfg.type]) {
     addEventListener("resize", resize);
     resize();

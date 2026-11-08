@@ -3,6 +3,9 @@
   const C = window.CONFIG;
   const $ = id => document.getElementById(id);
   const root = document.documentElement;
+  // Everything here is written by users, so escape before it touches innerHTML
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const safeUrl = u => (/^https?:\/\//i.test(u || "") ? u : "#");
 
   // ---------- Theme variables ----------
   root.style.setProperty("--accent", C.theme.accent);
@@ -20,18 +23,21 @@
   $("status-dot").className = "status-dot " + C.status;
   $("status-dot").title = C.status;
   $("footer-text").textContent = C.footer;
-  if (C.banner) $("banner").style.backgroundImage = `url("${C.banner}")`;
+  if (C.banner) $("banner").style.backgroundImage = `url("${encodeURI(C.banner)}")`;
   else $("banner").hidden = true;
 
   // Badges
-  $("badges").innerHTML = C.badges.map(b =>
-    `<span class="badge" data-tip="${b.label}">${ICONS[b.icon] || ""}</span>`
-  ).join("");
+  if (C.badges.length) {
+    $("badges").innerHTML = C.badges.map(b =>
+      `<span class="badge" data-tip="${esc(b.label)}">${ICONS[b.icon] || ""}</span>`
+    ).join("");
+  } else $("badges").hidden = true;
 
   // Socials
+  if (!C.socials.length) $("socials").hidden = true;
   $("socials").innerHTML = C.socials.map((s, i) =>
-    `<a class="social" href="${s.copy ? "#" : s.url}" ${s.copy ? "" : 'target="_blank" rel="noopener"'}
-        data-i="${i}" data-tip="${s.label}" aria-label="${s.label}">${ICONS[s.icon] || ICONS.link}</a>`
+    `<a class="social" href="${s.copy ? "#" : esc(safeUrl(s.url))}" ${s.copy ? "" : 'target="_blank" rel="noopener nofollow"'}
+        data-i="${i}" data-tip="${esc(s.label)}" aria-label="${esc(s.label)}">${ICONS[s.icon] || ICONS.link}</a>`
   ).join("");
   $("socials").addEventListener("click", e => {
     const a = e.target.closest(".social");
@@ -49,16 +55,16 @@
   // Links
   if (C.links.length) {
     $("links").innerHTML = C.links.map(l =>
-      `<a class="link-btn" href="${l.url}" target="_blank" rel="noopener">
+      `<a class="link-btn" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener nofollow">
          <span class="link-ico">${ICONS[l.icon] || ICONS.link}</span>
-         <span>${l.title}</span>
+         <span>${esc(l.title)}</span>
          <svg class="arrow" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
        </a>`
     ).join("");
   } else $("links").hidden = true;
 
   // Presence
-  const discordOn = C.discord && C.discord.enabled && C.discord.userId && C.discord.userId !== "PASTE_YOUR_DISCORD_USER_ID";
+  const discordOn = C.discord && C.discord.enabled && C.discord.userId;
   if (discordOn) {
     // discord.js fills the presence card live; hide it until data arrives
     $("presence").hidden = true;
@@ -74,13 +80,8 @@
     }, 1000);
   } else $("presence").hidden = true;
 
-  // ---------- View counter (local to this browser) ----------
-  let views = C.viewCounterStart;
-  try {
-    views = parseInt(localStorage.getItem("bio_views") || C.viewCounterStart, 10) + 1;
-    localStorage.setItem("bio_views", views);
-  } catch (_) {}
-  animateCount($("views"), views);
+  // ---------- View counter (real, counted by the server) ----------
+  animateCount($("views"), C.views || 0);
 
   function animateCount(el, target) {
     const dur = 1500, t0 = performance.now();
@@ -154,7 +155,7 @@
   function setPlaying() { $("icon-play").hidden = true; $("icon-pause").hidden = false; }
   function setPaused() { $("icon-play").hidden = false; $("icon-pause").hidden = true; }
 
-  if (!M.enabled) $("player").hidden = true;
+  if (!M.enabled || !M.tracks.length) $("player").hidden = true;
   else loadTrack(0);
 
   $("play-btn").onclick = () => (audio.paused ? play() : (audio.pause(), setPaused()));
@@ -199,8 +200,11 @@
 
   // ---------- Enter ----------
   function enter() {
-    $("splash").classList.add("hide");
-    setTimeout(() => $("splash").remove(), 800);
+    const splash = $("splash");
+    if (splash) {
+      splash.classList.add("hide");
+      setTimeout(() => splash.remove(), 800);
+    }
     $("app").classList.add("show");
     $("app").setAttribute("aria-hidden", "false");
     typewriter($("bio-text"), C.bio);

@@ -309,3 +309,14 @@ svg { fill: currentColor; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* "make your own" button (top-right) */
+.claim-btn {
+  position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); right: 16px; z-index: 20;
+  padding: 8px 14px; border-radius: 12px;
+  font-size: .8rem; font-weight: 600; color: #e4e4e7;
+  background: rgba(0,0,0,.35); border: 1px solid var(--border);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  transition: color .2s, border-color .2s;
+}
+.claim-btn:hover { color: var(--accent); border-color: var(--accent); }

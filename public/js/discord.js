@@ -7,7 +7,7 @@
 (function () {
   const C = window.CONFIG;
   const D = C.discord || {};
-  if (!D.enabled || !D.userId || D.userId === "PASTE_YOUR_DISCORD_USER_ID") return;
+  if (!D.enabled || !/^\d{15,21}$/.test(D.userId || "")) return;
 
   const $ = id => document.getElementById(id);
   const STATUS_TEXT = { online: "Online", idle: "Idle", dnd: "Do Not Disturb", offline: "Offline" };
@@ -75,7 +75,7 @@
       if (custom.emoji) {
         emoji = custom.emoji.id
           ? `<img class="cs-emoji" src="https://cdn.discordapp.com/emojis/${custom.emoji.id}.${custom.emoji.animated ? "gif" : "png"}" alt="">`
-          : `<span>${custom.emoji.name}</span>`;
+          : `<span>${escapeHtml(custom.emoji.name || "")}</span>`;
       }
       csEl.innerHTML = emoji + `<span>${escapeHtml(custom.state || "")}</span>`;
       csEl.hidden = false;

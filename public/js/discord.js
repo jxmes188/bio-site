@@ -64,9 +64,6 @@
     $("status-dot").className = "status-dot " + status;
     $("status-dot").title = STATUS_TEXT[status] || status;
 
-    // Discord social icon -> copy your real username
-    const dc = C.socials.find(s => s.icon === "discord");
-    if (dc) dc.url = user.username;
 
     // Custom status (activity type 4)
     const custom = data.activities.find(a => a.type === 4);

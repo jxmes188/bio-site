@@ -10,6 +10,12 @@
     discord: "Discord", github: "GitHub", youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram",
     x: "X", spotify: "Spotify", steam: "Steam", twitch: "Twitch", link: "Website"
   };
+  const SOCIAL_PLACEHOLDERS = {
+    discord: "Server invite, e.g. https://discord.gg/abc123", github: "https://github.com/you",
+    youtube: "https://youtube.com/@you", tiktok: "https://tiktok.com/@you", instagram: "https://instagram.com/you",
+    x: "https://x.com/you", spotify: "https://open.spotify.com/…", steam: "https://steamcommunity.com/id/you",
+    twitch: "https://twitch.tv/you", link: "https://yoursite.com"
+  };
   const LINK_ICONS = { link: "Link", heart: "Heart", star: "Star", bolt: "Bolt", fire: "Fire", code: "Code", crown: "Crown" };
 
   // ---------- tiny helpers ----------
@@ -197,17 +203,14 @@
     $("social-list").replaceChildren(...draft.socials.map((s, i) => h("li", { class: "list-row" },
       h("select", {
         class: "input", "aria-label": "Platform",
-        onchange: e => { s.icon = e.target.value; s.label = SOCIALS[s.icon]; if (s.icon === "discord") s.copy = true; renderSocials(); updateDirty(); }
+        onchange: e => { s.icon = e.target.value; s.label = SOCIALS[s.icon]; renderSocials(); updateDirty(); }
       }, Object.entries(SOCIALS).map(([k, label]) => h("option", { value: k, selected: k === s.icon }, label))),
       h("input", {
         class: "input grow", value: s.url, maxlength: "500",
-        placeholder: s.copy ? "username (copied on click)" : "https://…",
-        "aria-label": "Link or username",
+        placeholder: SOCIAL_PLACEHOLDERS[s.icon] || "https://…",
+        "aria-label": s.icon === "discord" ? "Discord server invite link" : "Link",
         oninput: e => { s.url = e.target.value; updateDirty(); }
       }),
-      h("label", { class: "check", title: "Clicking copies this text instead of opening a link" },
-        h("input", { type: "checkbox", checked: !!s.copy, onchange: e => { s.copy = e.target.checked; renderSocials(); updateDirty(); } }),
-        "copy"),
       h("div", { class: "row-btns" },
         h("button", { class: "btn btn-ghost btn-icon", title: "Move up", disabled: i === 0, onclick: () => move(draft.socials, i, -1, renderSocials) }, icon(I_UP)),
         h("button", { class: "btn btn-danger btn-icon", title: "Remove", onclick: () => { draft.socials.splice(i, 1); renderSocials(); updateDirty(); } }, icon(I_X))
@@ -218,7 +221,7 @@
     if (draft.socials.length >= 12) return toast("You can add up to 12 socials", true);
     const used = new Set(draft.socials.map(s => s.icon));
     const next = Object.keys(SOCIALS).find(k => !used.has(k)) || "link";
-    draft.socials.push({ icon: next, url: "", copy: next === "discord", label: SOCIALS[next] });
+    draft.socials.push({ icon: next, url: "", label: SOCIALS[next] });
     renderSocials();
     updateDirty();
     $("social-list").lastElementChild.querySelector("input").focus();
@@ -279,7 +282,7 @@
       applyMe(await api("PUT", "/api/me/profile", out));
       // The server drops links that aren't valid http(s) URLs; let the user know
       const kept = me.profile.socials.length + me.profile.links.length;
-      if (!quiet) toast(kept < sent ? "Saved. Some links were removed because they weren't valid https:// URLs." : "Saved ✓");
+      if (!quiet) toast(kept < sent ? "Saved. Some links were removed because they weren't valid (Discord needs a server invite link)." : "Saved ✓");
       reloadPreview();
     } catch (e) {
       toast(e.message, true);

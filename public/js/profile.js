@@ -70,22 +70,11 @@
 
   // Socials
   if (!C.socials.length) $("socials").hidden = true;
-  $("socials").innerHTML = C.socials.map((s, i) =>
-    `<a class="social" href="${s.copy ? "#" : esc(safeUrl(s.url))}" ${s.copy ? "" : 'target="_blank" rel="noopener nofollow"'}
-        data-i="${i}" data-tip="${esc(s.label)}" aria-label="${esc(s.label)}">${ICONS[s.icon] || ICONS.link}</a>`
+  // Each icon opens its link in a new tab
+  $("socials").innerHTML = C.socials.map(s =>
+    `<a class="social" href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener nofollow"
+        data-tip="${esc(s.label)}" aria-label="${esc(s.label)}">${ICONS[s.icon] || ICONS.link}</a>`
   ).join("");
-  $("socials").addEventListener("click", e => {
-    const a = e.target.closest(".social");
-    if (!a) return;
-    const s = C.socials[a.dataset.i];
-    if (s.copy) {
-      e.preventDefault();
-      navigator.clipboard?.writeText(s.url).then(
-        () => toast(`Copied ${s.label}: ${s.url}`),
-        () => toast(`${s.label}: ${s.url}`)
-      );
-    }
-  });
 
   // Links
   if (C.links.length) {

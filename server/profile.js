@@ -63,6 +63,21 @@ function httpUrl(v) {
   } catch { return ""; }
 }
 
+/** Discord icon must be a server invite. Accepts a full invite link
+ *  (discord.gg/abc, discord.com/invite/abc) or just the code "abc". */
+function discordInvite(v) {
+  if (typeof v !== "string") return "";
+  const s = v.trim();
+  if (/^[A-Za-z0-9-]{2,32}$/.test(s)) return "https://discord.gg/" + s;
+  const url = httpUrl(s);
+  if (!url) return "";
+  const u = new URL(url);
+  const host = u.hostname.replace(/^www\./, "");
+  if (host === "discord.gg" && /^\/[A-Za-z0-9-]{2,32}\/?$/.test(u.pathname)) return url;
+  if (["discord.com", "discordapp.com"].includes(host) && /^\/invite\/[A-Za-z0-9-]{2,32}\/?$/.test(u.pathname)) return url;
+  return "";
+}
+
 /**
  * Validate a profile coming from the dashboard.
  * ownFiles: Set of "/uploads/<userId>/<file>" URLs this user really owns, so
@@ -86,11 +101,12 @@ function sanitizeProfile(input, username, ownFiles) {
     avatar: own(p.avatar),
     banner: own(p.banner),
 
-    socials: (Array.isArray(p.socials) ? p.socials : []).slice(0, 12).map(s => {
-      const icon = oneOf(s && s.icon, SOCIAL_ICONS, "link");
-      const copy = !!(s && s.copy);
-      const url = copy ? str(s.url, 100) : httpUrl(s && s.url);
-      return { icon, url, copy, label: str(s && s.label, 30) || icon };
+    // Every social icon is a link that opens when clicked.
+    // Old "copy username" entries are dropped (they held a username, not a link).
+    socials: (Array.isArray(p.socials) ? p.socials : []).filter(s => s && !s.copy).slice(0, 12).map(s => {
+      const icon = oneOf(s.icon, SOCIAL_ICONS, "link");
+      const url = icon === "discord" ? discordInvite(s.url) : httpUrl(s.url);
+      return { icon, url, label: str(s.label, 30) || icon };
     }).filter(s => s.url),
 
     links: (Array.isArray(p.links) ? p.links : []).slice(0, 10).map(l => ({

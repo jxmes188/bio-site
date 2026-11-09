@@ -62,7 +62,12 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: "200kb" }));
 app.use(auth.loadUser);
-app.use(express.static(PUBLIC, { index: false, maxAge: "1h" }));
+// Browsers must check for a newer version on every visit (fast "not modified" if unchanged),
+// so an update never mixes a new page with an old cached script.
+app.use(express.static(PUBLIC, {
+  index: false,
+  setHeaders: res => res.set("Cache-Control", "no-cache")
+}));
 app.use("/uploads", express.static(UPLOAD_DIR, {
   maxAge: "7d",
   setHeaders: res => res.set("Content-Security-Policy", "default-src 'none'; sandbox")

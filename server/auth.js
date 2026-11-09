@@ -58,7 +58,7 @@ function loadUser(req, _res, next) {
   if (token) {
     const row = db.prepare(`
       SELECT u.id, u.username, u.email FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = ? AND s.expires_at > ?`).get(sha256(token), Date.now());
+      WHERE s.token_hash = ? AND s.expires_at > ? AND u.email_verified = 1`).get(sha256(token), Date.now());
     if (row) req.user = row;
   }
   next();

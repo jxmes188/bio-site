@@ -46,11 +46,20 @@ db.exec(`
     PRIMARY KEY (user_id, visitor_hash, day)
   );
 
-  CREATE TABLE IF NOT EXISTS email_tokens (
-    token_hash  TEXT PRIMARY KEY,
-    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    expires_at  INTEGER NOT NULL
+  -- Sign-ups waiting for the 6-digit email code (no account exists yet)
+  CREATE TABLE IF NOT EXISTS pending_signups (
+    id          TEXT PRIMARY KEY,
+    username    TEXT NOT NULL COLLATE NOCASE,
+    email       TEXT NOT NULL COLLATE NOCASE,
+    pass_hash   TEXT NOT NULL,
+    code_hash   TEXT NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    sent_at     INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL,
+    ip_hash     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
   );
+  DROP TABLE IF EXISTS email_tokens;
 
   CREATE TABLE IF NOT EXISTS signup_log (
     ip_hash     TEXT NOT NULL,

@@ -137,16 +137,3 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   .list-row select.input { width: 100%; }
   .savebar { width: calc(100% - 32px); justify-content: space-between; }
 }
-
-/* Email confirmation banner */
-.verify-banner {
-  display: flex; flex-direction: column; gap: 12px;
-  padding: 16px 18px; border-radius: var(--radius);
-  background: rgba(168, 85, 247, .1); border: 1px solid rgba(168, 85, 247, .45);
-}
-.verify-banner .hint { margin-top: 4px; }
-.verify-banner form .input { max-width: 280px; padding: 8px 10px; }
-@media (max-width: 640px) {
-  .verify-banner form { flex-wrap: wrap; }
-  .verify-banner form .input { max-width: none; }
-}

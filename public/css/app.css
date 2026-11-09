@@ -129,6 +129,11 @@ select.input option { background: var(--panel); }
 .auth-form h2 { font-size: 1.25rem; letter-spacing: -.01em; }
 .auth-form .sub { color: var(--muted); font-size: .9rem; margin-top: -8px; }
 .avail { font-size: .78rem; min-height: 1.1em; }
+.code-input { font-size: 1.6rem; font-weight: 700; letter-spacing: .5em; text-align: center; padding-left: calc(13px + .5em); }
+.code-links { display: flex; gap: 8px; justify-content: center; align-items: center; color: var(--faint); font-size: .88rem; }
+.text-btn { background: none; border: 0; padding: 4px; cursor: pointer; color: var(--accent); font-weight: 600; }
+.text-btn:hover { text-decoration: underline; }
+.text-btn:disabled { color: var(--faint); cursor: default; text-decoration: none; }
 .home-foot { text-align: center; color: var(--faint); font-size: .8rem; padding: 20px 0 28px; }
 
 @media (max-width: 860px) {

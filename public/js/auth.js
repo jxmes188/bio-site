@@ -9,11 +9,15 @@
   document.title = host.split(":")[0] + " · claim your page";
 
   // ---------- Tabs ----------
+  let pendingId = null;   // set after step 1 of sign up, until the code is entered
+
   function showTab(name) {
     document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
-    $("signup-form").hidden = name !== "signup";
+    const codeStep = name === "signup" && pendingId;
+    $("signup-form").hidden = name !== "signup" || !!codeStep;
+    $("code-form").hidden = !codeStep;
     $("signin-form").hidden = name !== "signin";
-    (name === "signup" ? $("su-username") : $("si-login")).focus();
+    (codeStep ? $("code-input") : name === "signup" ? $("su-username") : $("si-login")).focus();
   }
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
   $("nav-signin").addEventListener("click", () => showTab("signin"));
@@ -74,16 +78,79 @@
     $("su-error").textContent = "";
     busy($("su-submit"), true);
     try {
-      await post("/api/signup", {
+      const r = await post("/api/signup", {
         username: $("su-username").value,
         email: $("su-email").value,
         password: $("su-password").value
       });
-      location.href = "/dashboard";
+      // Step 2: ask for the code from the email
+      pendingId = r.pendingId;
+      $("code-email").textContent = r.email;
+      $("code-username").textContent = `${host}/${r.username}`;
+      $("code-input").value = "";
+      $("code-error").textContent = "";
+      startResendTimer();
+      showTab("signup");
     } catch (err) {
       $("su-error").textContent = err.message;
-      busy($("su-submit"), false, "Create account");
     }
+    busy($("su-submit"), false, "Create account");
+  });
+
+  // ---------- Sign up step 2: the code ----------
+  $("code-input").addEventListener("input", e => {
+    e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
+    if (e.target.value.length === 6) $("code-form").requestSubmit();
+  });
+
+  $("code-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const code = $("code-input").value;
+    if (code.length !== 6) { $("code-error").textContent = "Enter the 6-digit code from your email"; return; }
+    $("code-error").textContent = "";
+    busy($("code-submit"), true);
+    try {
+      await post("/api/signup/verify", { pendingId, code });
+      location.href = "/dashboard";
+    } catch (err) {
+      $("code-error").textContent = err.message;
+      $("code-input").select();
+      busy($("code-submit"), false, "Verify & create account");
+    }
+  });
+
+  let resendTimer;
+  function startResendTimer() {
+    const btn = $("code-resend");
+    let left = 60;
+    clearInterval(resendTimer);
+    btn.disabled = true;
+    btn.textContent = `Resend code (${left}s)`;
+    resendTimer = setInterval(() => {
+      left--;
+      if (left <= 0) { clearInterval(resendTimer); btn.disabled = false; btn.textContent = "Resend code"; }
+      else btn.textContent = `Resend code (${left}s)`;
+    }, 1000);
+  }
+
+  $("code-resend").addEventListener("click", async () => {
+    $("code-error").textContent = "";
+    try {
+      await post("/api/signup/resend", { pendingId });
+      $("code-error").textContent = "";
+      $("code-input").value = "";
+      startResendTimer();
+      $("code-error").innerHTML = "";
+      $("code-error").append(Object.assign(document.createElement("span"), { className: "ok", textContent: "New code sent ✓" }));
+    } catch (err) {
+      $("code-error").textContent = err.message;
+    }
+  });
+
+  $("code-back").addEventListener("click", () => {
+    pendingId = null;
+    clearInterval(resendTimer);
+    showTab("signup");
   });
 
   $("signin-form").addEventListener("submit", async e => {

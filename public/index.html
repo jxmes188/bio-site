@@ -72,6 +72,21 @@
           <button class="btn btn-primary" type="submit" id="su-submit">Create account</button>
         </form>
 
+        <!-- Sign up step 2: code from the email -->
+        <form class="auth-form" id="code-form" hidden novalidate>
+          <h2>Check your email</h2>
+          <p class="sub">We sent a 6-digit code to <b id="code-email"></b>. Type it below to claim <b id="code-username"></b>.</p>
+          <input class="input code-input" id="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" aria-label="6-digit code" />
+          <p class="error-msg" id="code-error"></p>
+          <button class="btn btn-primary" type="submit" id="code-submit">Verify &amp; create account</button>
+          <p class="code-links">
+            <button type="button" class="text-btn" id="code-resend">Resend code</button>
+            <span>·</span>
+            <button type="button" class="text-btn" id="code-back">Change details</button>
+          </p>
+          <p class="hint">Can't find it? Check your spam folder. The code expires in 15 minutes.</p>
+        </form>
+
         <!-- Sign in -->
         <form class="auth-form" id="signin-form" hidden novalidate>
           <h2>Welcome back</h2>

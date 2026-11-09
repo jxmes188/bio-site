@@ -64,10 +64,6 @@
     catch (e) { toast(e.message, true); return; }
     bindInputs();
     reloadPreview();
-    if (new URLSearchParams(location.search).get("verified") === "1") {
-      toast("Email confirmed ✓ Your page is live!");
-      history.replaceState(null, "", "/dashboard");
-    }
   }
 
   function applyMe(data) {
@@ -84,7 +80,6 @@
     const used = me.files.reduce((s, f) => s + f.size, 0);
     $("acct-storage").textContent = `${fmtMB(used)} of ${fmtMB(me.quota)}`;
     document.title = `Dashboard · ${me.username}`;
-    renderVerify();
     renderAll();
     updateDirty();
   }
@@ -143,36 +138,6 @@
     document.querySelectorAll("[data-cursor-opt]").forEach(el => (el.hidden = !trailOn));
     $("cursor-color-wrap").hidden = !trailOn || draft.cursor.colorMode !== "custom";
   }
-
-  // ---------- Email confirmation banner ----------
-  function renderVerify() {
-    $("verify-banner").hidden = me.emailVerified;
-    $("vb-email").textContent = me.email;
-  }
-  $("vb-resend").addEventListener("click", async () => {
-    const msg = $("vb-msg");
-    $("vb-resend").disabled = true;
-    try {
-      applyMe(await api("POST", "/api/me/resend-verification"));
-      msg.textContent = "Sent ✓ Check your inbox (and spam folder).";
-      msg.className = "hint ok";
-    } catch (e) { msg.textContent = e.message; msg.className = "hint bad"; }
-    setTimeout(() => ($("vb-resend").disabled = false), 5000);
-  });
-  $("vb-change").addEventListener("click", () => {
-    $("vb-form").hidden = !$("vb-form").hidden;
-    if (!$("vb-form").hidden) $("vb-new-email").focus();
-  });
-  $("vb-form").addEventListener("submit", async e => {
-    e.preventDefault();
-    const msg = $("vb-msg");
-    try {
-      applyMe(await api("POST", "/api/me/email", { email: $("vb-new-email").value }));
-      $("vb-form").hidden = true;
-      msg.textContent = "Email updated. We sent a new link ✓";
-      msg.className = "hint ok";
-    } catch (err) { msg.textContent = err.message; msg.className = "hint bad"; }
-  });
 
   // ---------- Images ----------
   function renderImages() {

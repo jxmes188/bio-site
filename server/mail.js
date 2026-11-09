@@ -3,7 +3,7 @@
      RESEND_API_KEY  your Resend API key
      MAIL_FROM       e.g.  goyslop.work <no-reply@goyslop.work>
    Without RESEND_API_KEY (e.g. running on your own PC) the email is printed
-   in the terminal instead, so you can still click the confirmation link. */
+   in the terminal instead, so you can still see the sign-up code. */
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -22,26 +22,26 @@ async function sendMail({ to, subject, html, text }) {
   return res.json();
 }
 
-function sendVerification(to, username, link, siteName) {
-  const subject = `Confirm your email for ${siteName}/${username}`;
+function sendCode(to, username, code, siteName) {
+  const subject = `${code} is your ${siteName} code`;
   const text =
-    `Hi ${username},\n\nConfirm your email to publish your page ${siteName}/${username}:\n${link}\n\n` +
-    `This link expires in 24 hours. If you didn't sign up, ignore this email and the account will be deleted.`;
+    `Your code to claim ${siteName}/${username} is: ${code}\n\n` +
+    `Type it on the sign-up page. It expires in 15 minutes.\n` +
+    `If you didn't try to sign up, you can ignore this email. No account is created without the code.`;
   const html = `
   <div style="font-family:Arial,Helvetica,sans-serif;background:#07070b;padding:32px 16px">
     <div style="max-width:440px;margin:0 auto;background:#101017;border:1px solid #2a2a35;border-radius:14px;padding:28px;color:#f4f4f5">
-      <h1 style="font-size:20px;margin:0 0 12px">Confirm your email</h1>
-      <p style="color:#a1a1aa;line-height:1.5;margin:0 0 22px">
-        Hi <b style="color:#f4f4f5">${esc(username)}</b>, click the button to confirm your email and publish
-        <b style="color:#f4f4f5">${esc(siteName)}/${esc(username)}</b>.
+      <h1 style="font-size:20px;margin:0 0 12px">Your sign-up code</h1>
+      <p style="color:#a1a1aa;line-height:1.5;margin:0 0 20px">
+        Type this code on the sign-up page to claim <b style="color:#f4f4f5">${esc(siteName)}/${esc(username)}</b>.
       </p>
-      <a href="${esc(link)}" style="display:inline-block;background:#a855f7;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:10px">Confirm email</a>
+      <div style="font-size:34px;font-weight:bold;letter-spacing:10px;text-align:center;background:#16161f;border:1px solid #2a2a35;border-radius:12px;padding:16px 0;color:#ffffff">${esc(code)}</div>
       <p style="color:#71717a;font-size:12px;line-height:1.5;margin:22px 0 0">
-        This link expires in 24 hours. If you didn't sign up, ignore this email and the account will be deleted.
+        This code expires in 15 minutes. If you didn't try to sign up, ignore this email. No account is created without the code.
       </p>
     </div>
   </div>`;
   return sendMail({ to, subject, html, text });
 }
 
-module.exports = { sendMail, sendVerification };
+module.exports = { sendMail, sendCode };

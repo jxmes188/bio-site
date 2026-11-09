@@ -83,52 +83,52 @@ function readProfile(user) {
 function saveProfile(userId, profile) {
   db.prepare("UPDATE users SET profile = ? WHERE id = ?").run(JSON.stringify(profile), userId);
 }
+// Only confirmed accounts hold a username / email. Leftover unconfirmed ones
+// (from the old email-link system) don't block anyone.
+const getVerifiedByName = u => db.prepare("SELECT * FROM users WHERE username = ? AND email_verified = 1").get(u);
+const getVerifiedByEmail = e => db.prepare("SELECT * FROM users WHERE email = ? AND email_verified = 1").get(e);
+
 function usernameProblem(u) {
   if (!USERNAME_RE.test(u)) return "2–20 characters: letters, numbers, _ and . only";
   if (RESERVED.has(u)) return "That username is reserved";
-  if (getUserByName(u)) return "That username is already taken";
+  if (getVerifiedByName(u)) return "That username is already taken";
   return null;
 }
-// ---------- Email confirmation ----------
-function siteBase(req) {
-  return SITE_URL || `${req.protocol}://${req.get("host")}`;
+
+// ---------- Sign-up codes ----------
+const CODE_MINUTES = 15;        // a code works for 15 minutes
+const CODE_MAX_TRIES = 5;       // wrong guesses allowed per code
+const CODES_PER_IP_PER_HOUR = 10;
+
+function siteHost(req) {
+  try { return new URL(SITE_URL || `https://${req.get("host")}`).host; } catch { return req.get("host"); }
+}
+const hashCode = (id, code) => auth.sha256(`${id}|${code}|${VIEW_SECRET}`);
+
+async function sendCode(req, pending) {
+  const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
+  db.prepare("UPDATE pending_signups SET code_hash = ?, attempts = 0, sent_at = ?, expires_at = ? WHERE id = ?")
+    .run(hashCode(pending.id, code), Date.now(), Date.now() + CODE_MINUTES * 60e3, pending.id);
+  await mail.sendCode(pending.email, pending.username, code, siteHost(req));
 }
 
-async function sendVerifyEmail(req, user) {
-  const token = crypto.randomBytes(32).toString("hex");
-  db.prepare("DELETE FROM email_tokens WHERE user_id = ?").run(user.id);
-  db.prepare("INSERT INTO email_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)")
-    .run(auth.sha256(token), user.id, Date.now() + VERIFY_HOURS * 3600e3);
-  db.prepare("UPDATE users SET verify_sent_at = ? WHERE id = ?").run(Date.now(), user.id);
-  const base = siteBase(req);
-  await mail.sendVerification(user.email, user.username, `${base}/verify?token=${token}`, new URL(base).host);
-}
-
-// Unconfirmed accounts older than 24h are deleted so their usernames free up again
-function cleanupUnverified() {
+// Hourly tidy-up: old unconfirmed accounts, expired codes, old logs
+function cleanup() {
   const cutoff = Date.now() - VERIFY_HOURS * 3600e3;
   for (const u of db.prepare("SELECT id FROM users WHERE email_verified = 0 AND created_at < ?").all(cutoff)) {
     db.prepare("DELETE FROM users WHERE id = ?").run(u.id);
     fs.rmSync(path.join(UPLOAD_DIR, String(u.id)), { recursive: true, force: true });
   }
+  db.prepare("DELETE FROM pending_signups WHERE expires_at < ?").run(Date.now() - 3600e3);
   db.prepare("DELETE FROM signup_log WHERE created_at < ?").run(Date.now() - 864e5);
-  db.prepare("DELETE FROM email_tokens WHERE expires_at < ?").run(Date.now());
 }
-cleanupUnverified();
-setInterval(cleanupUnverified, 3600e3).unref();
-
-function requireVerified(req, res, next) {
-  const u = db.prepare("SELECT email_verified FROM users WHERE id = ?").get(req.user.id);
-  if (!u || !u.email_verified) return res.status(403).json({ error: "Confirm your email first. Check your inbox for the link." });
-  next();
-}
+cleanup();
+setInterval(cleanup, 3600e3).unref();
 
 function meResponse(user) {
   return {
     username: user.username,
     email: user.email,
-    emailVerified: !!user.email_verified,
-    verifySentAt: user.verify_sent_at,
     views: user.views,
     badges: JSON.parse(user.badges || "[]"),
     profile: readProfile(user),
@@ -138,6 +138,7 @@ function meResponse(user) {
 }
 
 const authLimiter = auth.rateLimit({ windowMs: 15 * 60e3, max: 20 });
+const codeLimiter = auth.rateLimit({ windowMs: 15 * 60e3, max: 30 });
 
 // ---------- Auth API ----------
 app.get("/api/check/:username", (req, res) => {
@@ -146,6 +147,7 @@ app.get("/api/check/:username", (req, res) => {
   res.json({ available: !problem, reason: problem });
 });
 
+// Step 1: check the details and email a 6-digit code. Nothing is created yet.
 app.post("/api/signup", authLimiter, async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const email = String(req.body.email || "").trim().toLowerCase();
@@ -155,74 +157,89 @@ app.post("/api/signup", authLimiter, async (req, res) => {
   if (problem) return res.status(400).json({ error: problem, field: "username" });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200)
     return res.status(400).json({ error: "Enter a valid email", field: "email" });
-  if (db.prepare("SELECT 1 FROM users WHERE email = ?").get(email))
+  if (getVerifiedByEmail(email))
     return res.status(400).json({ error: "That email already has an account", field: "email" });
   if (password.length < 8 || password.length > 200)
     return res.status(400).json({ error: "Password must be at least 8 characters", field: "password" });
 
-  // Limit how many accounts one connection can create per day
   const ipHash = auth.sha256(`${req.ip}|${VIEW_SECRET}`);
-  const recent = db.prepare("SELECT COUNT(*) n FROM signup_log WHERE ip_hash = ? AND created_at > ?").get(ipHash, Date.now() - 864e5).n;
-  if (recent >= SIGNUPS_PER_IP_PER_DAY)
+  const made = db.prepare("SELECT COUNT(*) n FROM signup_log WHERE ip_hash = ? AND created_at > ?").get(ipHash, Date.now() - 864e5).n;
+  if (made >= SIGNUPS_PER_IP_PER_DAY)
     return res.status(429).json({ error: "Too many accounts created from this connection today. Try again tomorrow." });
+  const codes = db.prepare("SELECT COUNT(*) n FROM pending_signups WHERE ip_hash = ? AND created_at > ?").get(ipHash, Date.now() - 3600e3).n;
+  if (codes >= CODES_PER_IP_PER_HOUR)
+    return res.status(429).json({ error: "Too many sign-up attempts. Try again in an hour." });
 
-  const info = db.prepare("INSERT INTO users (username, email, pass_hash, profile, created_at, email_verified) VALUES (?, ?, ?, ?, ?, 0)")
-    .run(username, email, auth.hashPassword(password), JSON.stringify(defaultProfile(username)), Date.now());
-  db.prepare("INSERT INTO signup_log (ip_hash, created_at) VALUES (?, ?)").run(ipHash, Date.now());
-  const userId = Number(info.lastInsertRowid);
-  auth.createSession(res, userId, req.secure);
+  // One pending sign-up per email: starting again replaces the old one
+  db.prepare("DELETE FROM pending_signups WHERE email = ?").run(email);
+  const pending = { id: crypto.randomBytes(16).toString("hex"), username, email };
+  db.prepare(`INSERT INTO pending_signups (id, username, email, pass_hash, code_hash, attempts, sent_at, expires_at, ip_hash, created_at)
+              VALUES (?, ?, ?, ?, '', 0, 0, 0, ?, ?)`)
+    .run(pending.id, username, email, auth.hashPassword(password), ipHash, Date.now());
 
-  let emailSent = true;
-  try { await sendVerifyEmail(req, getUserById(userId)); }
-  catch (err) { emailSent = false; console.error("Verification email failed:", err.message); }
-  res.json({ ok: true, username, emailSent });
-});
-
-// Link from the confirmation email
-app.get("/verify", (req, res) => {
-  const token = String(req.query.token || "");
-  const row = token && db.prepare("SELECT * FROM email_tokens WHERE token_hash = ? AND expires_at > ?").get(auth.sha256(token), Date.now());
-  if (!row) {
-    return res.status(400).send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Link expired</title><link rel="icon" href="/img/favicon.svg"><link rel="stylesheet" href="/css/app.css"></head>
-      <body><div class="glow-bg"></div><main class="center-page"><div><h1>Oops</h1>
-      <p>This confirmation link is invalid or has expired.<br>Sign in and press "Resend email" to get a new one.</p>
-      <a class="btn btn-primary" href="/#signin">Sign in</a></div></main></body></html>`);
+  try { await sendCode(req, pending); }
+  catch (err) {
+    console.error("Sign-up code email failed:", err.message);
+    db.prepare("DELETE FROM pending_signups WHERE id = ?").run(pending.id);
+    return res.status(502).json({ error: "We couldn't send the email. Check the address and try again." });
   }
-  db.prepare("UPDATE users SET email_verified = 1 WHERE id = ?").run(row.user_id);
-  db.prepare("DELETE FROM email_tokens WHERE user_id = ?").run(row.user_id);
-  if (!req.user || req.user.id !== row.user_id) auth.createSession(res, row.user_id, req.secure);
-  res.redirect("/dashboard?verified=1");
+  res.json({ ok: true, pendingId: pending.id, email, username });
 });
 
-app.post("/api/me/resend-verification", auth.requireUser, async (req, res) => {
-  const user = getUserById(req.user.id);
-  if (user.email_verified) return res.status(400).json({ error: "Your email is already confirmed" });
-  const wait = user.verify_sent_at + RESEND_COOLDOWN_MS - Date.now();
-  if (wait > 0) return res.status(429).json({ error: `Wait ${Math.ceil(wait / 1000)}s before sending another email` });
-  try { await sendVerifyEmail(req, user); }
-  catch (err) { console.error("Verification email failed:", err.message); return res.status(502).json({ error: "Couldn't send the email. Try again in a minute." }); }
-  res.json(meResponse(getUserById(user.id)));
+// Step 2: the code from the email creates the account and claims the username
+app.post("/api/signup/verify", codeLimiter, (req, res) => {
+  const p = db.prepare("SELECT * FROM pending_signups WHERE id = ?").get(String(req.body.pendingId || ""));
+  if (!p || p.expires_at < Date.now())
+    return res.status(400).json({ error: "This code has expired. Press \"Resend code\" to get a new one.", expired: true });
+  if (p.attempts >= CODE_MAX_TRIES)
+    return res.status(400).json({ error: "Too many wrong codes. Press \"Resend code\" to get a new one." });
+
+  const code = String(req.body.code || "").replace(/\D/g, "");
+  const ok = code.length === 6 && crypto.timingSafeEqual(Buffer.from(hashCode(p.id, code)), Buffer.from(p.code_hash));
+  if (!ok) {
+    db.prepare("UPDATE pending_signups SET attempts = attempts + 1 WHERE id = ?").run(p.id);
+    const left = CODE_MAX_TRIES - p.attempts - 1;
+    return res.status(400).json({ error: left > 0 ? `Wrong code. ${left} ${left === 1 ? "try" : "tries"} left.` : "Wrong code. Press \"Resend code\" to get a new one." });
+  }
+
+  // Someone may have claimed the name or email while this code was waiting
+  if (getVerifiedByName(p.username)) {
+    db.prepare("DELETE FROM pending_signups WHERE id = ?").run(p.id);
+    return res.status(409).json({ error: "Someone just claimed that username. Pick another one.", restart: true });
+  }
+  if (getVerifiedByEmail(p.email)) {
+    db.prepare("DELETE FROM pending_signups WHERE id = ?").run(p.id);
+    return res.status(409).json({ error: "That email already has an account. Sign in instead.", restart: true });
+  }
+
+  // Clear any leftover unconfirmed account holding this name or email
+  for (const old of db.prepare("SELECT id FROM users WHERE email_verified = 0 AND (username = ? OR email = ?)").all(p.username, p.email)) {
+    db.prepare("DELETE FROM users WHERE id = ?").run(old.id);
+    fs.rmSync(path.join(UPLOAD_DIR, String(old.id)), { recursive: true, force: true });
+  }
+
+  const info = db.prepare("INSERT INTO users (username, email, pass_hash, profile, created_at, email_verified) VALUES (?, ?, ?, ?, ?, 1)")
+    .run(p.username, p.email, p.pass_hash, JSON.stringify(defaultProfile(p.username)), Date.now());
+  db.prepare("DELETE FROM pending_signups WHERE id = ? OR username = ?").run(p.id, p.username);
+  db.prepare("INSERT INTO signup_log (ip_hash, created_at) VALUES (?, ?)").run(p.ip_hash, Date.now());
+  auth.createSession(res, Number(info.lastInsertRowid), req.secure);
+  res.json({ ok: true, username: p.username });
 });
 
-// Fix a typo'd email (only before it's confirmed)
-app.post("/api/me/email", auth.requireUser, authLimiter, async (req, res) => {
-  const user = getUserById(req.user.id);
-  if (user.email_verified) return res.status(400).json({ error: "Your email is already confirmed" });
-  const email = String(req.body.email || "").trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) return res.status(400).json({ error: "Enter a valid email" });
-  if (db.prepare("SELECT 1 FROM users WHERE email = ? AND id != ?").get(email, user.id))
-    return res.status(400).json({ error: "That email already has an account" });
-  db.prepare("UPDATE users SET email = ? WHERE id = ?").run(email, user.id);
-  try { await sendVerifyEmail(req, getUserById(user.id)); }
-  catch (err) { console.error("Verification email failed:", err.message); return res.status(502).json({ error: "Email updated, but sending failed. Press Resend in a minute." }); }
-  res.json(meResponse(getUserById(user.id)));
+app.post("/api/signup/resend", codeLimiter, async (req, res) => {
+  const p = db.prepare("SELECT * FROM pending_signups WHERE id = ?").get(String(req.body.pendingId || ""));
+  if (!p) return res.status(400).json({ error: "This sign-up has expired. Fill in the form again.", restart: true });
+  const wait = p.sent_at + RESEND_COOLDOWN_MS - Date.now();
+  if (wait > 0) return res.status(429).json({ error: `Wait ${Math.ceil(wait / 1000)}s before sending another code` });
+  try { await sendCode(req, p); }
+  catch (err) { console.error("Sign-up code email failed:", err.message); return res.status(502).json({ error: "Couldn't send the email. Try again in a minute." }); }
+  res.json({ ok: true });
 });
 
 app.post("/api/login", authLimiter, (req, res) => {
   const login = String(req.body.login || "").trim().toLowerCase();
   const password = String(req.body.password || "");
-  const user = db.prepare("SELECT * FROM users WHERE username = ? OR email = ?").get(login, login);
+  const user = db.prepare("SELECT * FROM users WHERE (username = ? OR email = ?) AND email_verified = 1").get(login, login);
   if (!user || !auth.verifyPassword(password, user.pass_hash))
     return res.status(401).json({ error: "Wrong username/email or password" });
   auth.createSession(res, user.id, req.secure);
@@ -287,7 +304,7 @@ function removeFile(f) {
   fs.promises.unlink(path.join(UPLOAD_DIR, String(f.user_id), f.filename)).catch(() => {});
 }
 
-app.post("/api/me/upload/:kind", auth.requireUser, requireVerified, (req, res, next) => {
+app.post("/api/me/upload/:kind", auth.requireUser, (req, res, next) => {
   const kind = req.params.kind;
   const k = KINDS[kind];
   if (!k) return res.status(400).json({ error: "Unknown upload type" });
@@ -349,8 +366,7 @@ app.delete("/api/me/files/:id", auth.requireUser, (req, res) => {
 // ---------- Public profile API ----------
 app.get("/api/profile/:username", (req, res) => {
   const user = getUserByName(req.params.username);
-  // Unconfirmed pages are hidden from everyone except their owner (for the dashboard preview)
-  if (!user || (!user.email_verified && (!req.user || req.user.id !== user.id)))
+  if (!user || !user.email_verified)
     return res.status(404).json({ error: "User not found" });
 
   // Count one view per visitor per day (visitor = hashed IP + browser, never stored raw)
@@ -380,7 +396,7 @@ app.get("/dashboard", (req, res) => (req.user ? res.sendFile(path.join(PUBLIC, "
 app.get("/:username", (req, res, next) => {
   const name = req.params.username;
   const user = getUserByName(name);
-  if (!user || (!user.email_verified && (!req.user || req.user.id !== user.id))) return next();
+  if (!user || !user.email_verified) return next();
   if (name !== user.username) return res.redirect(301, "/" + user.username);
   res.sendFile(path.join(PUBLIC, "profile.html"));
 });

@@ -61,6 +61,17 @@ db.exec(`
   );
   DROP TABLE IF EXISTS email_tokens;
 
+  -- "Forgot password" requests waiting for their 6-digit code
+  CREATE TABLE IF NOT EXISTS password_resets (
+    id          TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash   TEXT NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    sent_at     INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS signup_log (
     ip_hash     TEXT NOT NULL,
     created_at  INTEGER NOT NULL

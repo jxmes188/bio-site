@@ -236,6 +236,67 @@ app.post("/api/signup/resend", codeLimiter, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Forgot password ----------
+// Always answers the same way, so nobody can use it to find out which emails have accounts.
+app.post("/api/password/forgot", authLimiter, async (req, res) => {
+  const login = String(req.body.login || "").trim().toLowerCase();
+  const user = login && db.prepare("SELECT * FROM users WHERE (username = ? OR email = ?) AND email_verified = 1").get(login, login);
+  const id = crypto.randomBytes(16).toString("hex");
+  if (user) {
+    const recent = db.prepare("SELECT COUNT(*) n FROM password_resets WHERE user_id = ? AND created_at > ?").get(user.id, Date.now() - 3600e3).n;
+    if (recent < 5) {
+      db.prepare("DELETE FROM password_resets WHERE user_id = ?").run(user.id);
+      db.prepare("INSERT INTO password_resets (id, user_id, code_hash, attempts, sent_at, expires_at, created_at) VALUES (?, ?, '', 0, 0, 0, ?)")
+        .run(id, user.id, Date.now());
+      try { await sendResetCode(req, id, user); }
+      catch (err) { console.error("Reset email failed:", err.message); return res.status(502).json({ error: "Couldn't send the email. Try again in a minute." }); }
+    }
+  }
+  res.json({ ok: true, resetId: id });
+});
+
+async function sendResetCode(req, id, user) {
+  const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
+  db.prepare("UPDATE password_resets SET code_hash = ?, attempts = 0, sent_at = ?, expires_at = ? WHERE id = ?")
+    .run(hashCode(id, code), Date.now(), Date.now() + CODE_MINUTES * 60e3, id);
+  await mail.sendResetCode(user.email, user.username, code, siteHost(req));
+}
+
+app.post("/api/password/resend", codeLimiter, async (req, res) => {
+  const r = db.prepare("SELECT * FROM password_resets WHERE id = ?").get(String(req.body.resetId || ""));
+  if (!r) return res.json({ ok: true }); // unknown id: same answer as a real one
+  const wait = r.sent_at + RESEND_COOLDOWN_MS - Date.now();
+  if (wait > 0) return res.status(429).json({ error: `Wait ${Math.ceil(wait / 1000)}s before sending another code` });
+  const user = getUserById(r.user_id);
+  try { await sendResetCode(req, r.id, user); }
+  catch (err) { console.error("Reset email failed:", err.message); return res.status(502).json({ error: "Couldn't send the email. Try again in a minute." }); }
+  res.json({ ok: true });
+});
+
+app.post("/api/password/reset", codeLimiter, (req, res) => {
+  const r = db.prepare("SELECT * FROM password_resets WHERE id = ?").get(String(req.body.resetId || ""));
+  const password = String(req.body.password || "");
+  if (password.length < 8 || password.length > 200)
+    return res.status(400).json({ error: "New password must be at least 8 characters", field: "password" });
+  if (!r) return res.status(400).json({ error: "Wrong code." });
+  if (r.expires_at < Date.now()) return res.status(400).json({ error: "This code has expired. Press \"Resend code\" to get a new one." });
+  if (r.attempts >= CODE_MAX_TRIES) return res.status(400).json({ error: "Too many wrong codes. Press \"Resend code\" to get a new one." });
+
+  const code = String(req.body.code || "").replace(/\D/g, "");
+  const ok = code.length === 6 && crypto.timingSafeEqual(Buffer.from(hashCode(r.id, code)), Buffer.from(r.code_hash));
+  if (!ok) {
+    db.prepare("UPDATE password_resets SET attempts = attempts + 1 WHERE id = ?").run(r.id);
+    const left = CODE_MAX_TRIES - r.attempts - 1;
+    return res.status(400).json({ error: left > 0 ? `Wrong code. ${left} ${left === 1 ? "try" : "tries"} left.` : "Wrong code. Press \"Resend code\" to get a new one." });
+  }
+
+  db.prepare("UPDATE users SET pass_hash = ? WHERE id = ?").run(auth.hashPassword(password), r.user_id);
+  db.prepare("DELETE FROM password_resets WHERE user_id = ?").run(r.user_id);
+  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(r.user_id); // sign out everywhere else
+  auth.createSession(res, r.user_id, req.secure);
+  res.json({ ok: true, username: getUserById(r.user_id).username });
+});
+
 app.post("/api/login", authLimiter, (req, res) => {
   const login = String(req.body.login || "").trim().toLowerCase();
   const password = String(req.body.password || "");
@@ -390,7 +451,8 @@ app.get("/api/profile/:username", (req, res) => {
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
 
 // ---------- Pages ----------
-app.get("/", (req, res) => (req.user ? res.redirect("/dashboard") : res.sendFile(path.join(PUBLIC, "index.html"))));
+// The homepage always shows sign in / sign up (signed-in visitors also get a "Go to dashboard" bar)
+app.get("/", (_req, res) => res.sendFile(path.join(PUBLIC, "index.html")));
 app.get("/dashboard", (req, res) => (req.user ? res.sendFile(path.join(PUBLIC, "dashboard.html")) : res.redirect("/")));
 
 app.get("/:username", (req, res, next) => {

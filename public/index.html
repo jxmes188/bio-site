@@ -18,6 +18,12 @@
     <nav class="home-nav">
       <a class="brand" href="/"><img src="/img/favicon.svg" alt="" /><span class="site-name">bio</span></a>
       <button class="btn btn-ghost btn-sm" id="nav-signin">Sign in</button>
+      <!-- Shown instead when this browser is already signed in -->
+      <div class="signed-in" id="signed-in" hidden>
+        <span class="hint">Signed in as <b id="signed-in-name"></b></span>
+        <a class="btn btn-primary btn-sm" href="/dashboard">Go to dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="nav-signout">Sign out</button>
+      </div>
     </nav>
 
     <main class="home-main">
@@ -101,6 +107,40 @@
           </label>
           <p class="error-msg" id="si-error"></p>
           <button class="btn btn-primary" type="submit" id="si-submit">Sign in</button>
+          <p class="code-links"><button type="button" class="text-btn" id="si-forgot">Forgot password?</button></p>
+        </form>
+
+        <!-- Forgot password step 1: which account -->
+        <form class="auth-form" id="forgot-form" hidden novalidate>
+          <h2>Reset your password</h2>
+          <p class="sub">Enter your username or email and we'll send you a 6-digit code.</p>
+          <label class="field">
+            <span>Username or email</span>
+            <input class="input" id="fp-login" autocomplete="username" required />
+          </label>
+          <p class="error-msg" id="fp-error"></p>
+          <button class="btn btn-primary" type="submit" id="fp-submit">Send code</button>
+          <p class="code-links"><button type="button" class="text-btn" data-back-signin>Back to sign in</button></p>
+        </form>
+
+        <!-- Forgot password step 2: code + new password -->
+        <form class="auth-form" id="reset-form" hidden novalidate>
+          <h2>Check your email</h2>
+          <p class="sub">If <b id="rs-login"></b> has an account, we sent a 6-digit code to its email.</p>
+          <input class="input code-input" id="rs-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" aria-label="6-digit code" />
+          <label class="field">
+            <span>New password</span>
+            <input class="input" id="rs-password" type="password" minlength="8" autocomplete="new-password" required />
+            <span class="hint">At least 8 characters</span>
+          </label>
+          <p class="error-msg" id="rs-error"></p>
+          <button class="btn btn-primary" type="submit" id="rs-submit">Set new password</button>
+          <p class="code-links">
+            <button type="button" class="text-btn" id="rs-resend">Resend code</button>
+            <span>·</span>
+            <button type="button" class="text-btn" data-back-signin>Back to sign in</button>
+          </p>
+          <p class="hint">Can't find it? Check your spam folder. The code expires in 15 minutes.</p>
         </form>
       </section>
     </main>

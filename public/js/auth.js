@@ -17,10 +17,95 @@
     $("signup-form").hidden = name !== "signup" || !!codeStep;
     $("code-form").hidden = !codeStep;
     $("signin-form").hidden = name !== "signin";
-    (codeStep ? $("code-input") : name === "signup" ? $("su-username") : $("si-login")).focus();
+    $("forgot-form").hidden = name !== "forgot";
+    $("reset-form").hidden = name !== "reset";
+    const focus = { signup: codeStep ? "code-input" : "su-username", signin: "si-login", forgot: "fp-login", reset: "rs-code" }[name];
+    $(focus).focus();
   }
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
   $("nav-signin").addEventListener("click", () => showTab("signin"));
+
+  // ---------- Already signed in? Show who, instead of jumping to the dashboard ----------
+  fetch("/api/me").then(r => (r.ok ? r.json() : null)).then(me => {
+    if (!me) return;
+    $("nav-signin").hidden = true;
+    $("signed-in").hidden = false;
+    $("signed-in-name").textContent = "@" + me.username;
+  }).catch(() => {});
+  $("nav-signout").addEventListener("click", async () => {
+    await fetch("/api/logout", { method: "POST" }).catch(() => {});
+    $("signed-in").hidden = true;
+    $("nav-signin").hidden = false;
+    showTab("signin");
+  });
+
+  // ---------- Forgot password ----------
+  let resetId = null;
+  $("si-forgot").addEventListener("click", () => {
+    $("fp-login").value = $("si-login").value;
+    $("fp-error").textContent = "";
+    showTab("forgot");
+  });
+  document.querySelectorAll("[data-back-signin]").forEach(b => b.addEventListener("click", () => showTab("signin")));
+
+  $("forgot-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const login = $("fp-login").value.trim();
+    if (!login) { $("fp-error").textContent = "Enter your username or email"; return; }
+    $("fp-error").textContent = "";
+    busy($("fp-submit"), true);
+    try {
+      const r = await post("/api/password/forgot", { login });
+      resetId = r.resetId;
+      $("rs-login").textContent = login;
+      $("rs-code").value = $("rs-password").value = "";
+      $("rs-error").textContent = "";
+      startCountdown($("rs-resend"));
+      showTab("reset");
+    } catch (err) { $("fp-error").textContent = err.message; }
+    busy($("fp-submit"), false, "Send code");
+  });
+
+  $("rs-code").addEventListener("input", e => {
+    e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
+    if (e.target.value.length === 6) $("rs-password").focus();
+  });
+
+  $("reset-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    if ($("rs-code").value.length !== 6) { $("rs-error").textContent = "Enter the 6-digit code from your email"; return; }
+    $("rs-error").textContent = "";
+    busy($("rs-submit"), true);
+    try {
+      await post("/api/password/reset", { resetId, code: $("rs-code").value, password: $("rs-password").value });
+      location.href = "/dashboard";
+    } catch (err) {
+      $("rs-error").textContent = err.message;
+      busy($("rs-submit"), false, "Set new password");
+    }
+  });
+
+  $("rs-resend").addEventListener("click", async () => {
+    $("rs-error").textContent = "";
+    try {
+      await post("/api/password/resend", { resetId });
+      $("rs-code").value = "";
+      startCountdown($("rs-resend"));
+      $("rs-error").append(Object.assign(document.createElement("span"), { className: "ok", textContent: "New code sent ✓" }));
+    } catch (err) { $("rs-error").textContent = err.message; }
+  });
+
+  // 60-second "Resend code" countdown on a button
+  function startCountdown(btn) {
+    let left = 60;
+    clearInterval(btn._timer);
+    btn.disabled = true;
+    btn.textContent = `Resend code (${left}s)`;
+    btn._timer = setInterval(() => {
+      if (--left <= 0) { clearInterval(btn._timer); btn.disabled = false; btn.textContent = "Resend code"; }
+      else btn.textContent = `Resend code (${left}s)`;
+    }, 1000);
+  }
 
   // ---------- Claim box -> sign up form ----------
   $("claim-form").addEventListener("submit", e => {

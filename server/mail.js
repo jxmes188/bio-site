@@ -44,4 +44,25 @@ function sendCode(to, username, code, siteName) {
   return sendMail({ to, subject, html, text });
 }
 
-module.exports = { sendMail, sendCode };
+function sendResetCode(to, username, code, siteName) {
+  const subject = `${code} is your ${siteName} password reset code`;
+  const text =
+    `Someone asked to reset the password for ${siteName}/${username}.\n\n` +
+    `Your code is: ${code}\n\nIt expires in 15 minutes. If this wasn't you, ignore this email and your password stays the same.`;
+  const html = `
+  <div style="font-family:Arial,Helvetica,sans-serif;background:#07070b;padding:32px 16px">
+    <div style="max-width:440px;margin:0 auto;background:#101017;border:1px solid #2a2a35;border-radius:14px;padding:28px;color:#f4f4f5">
+      <h1 style="font-size:20px;margin:0 0 12px">Reset your password</h1>
+      <p style="color:#a1a1aa;line-height:1.5;margin:0 0 20px">
+        Type this code on the sign-in page to choose a new password for <b style="color:#f4f4f5">${esc(siteName)}/${esc(username)}</b>.
+      </p>
+      <div style="font-size:34px;font-weight:bold;letter-spacing:10px;text-align:center;background:#16161f;border:1px solid #2a2a35;border-radius:12px;padding:16px 0;color:#ffffff">${esc(code)}</div>
+      <p style="color:#71717a;font-size:12px;line-height:1.5;margin:22px 0 0">
+        This code expires in 15 minutes. If you didn't ask for this, ignore this email and your password stays the same.
+      </p>
+    </div>
+  </div>`;
+  return sendMail({ to, subject, html, text });
+}
+
+module.exports = { sendMail, sendCode, sendResetCode };

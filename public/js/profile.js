@@ -119,6 +119,11 @@
 
   // ---------- Typewriter bio ----------
   function typewriter(el, lines) {
+    // No bio: hide the whole line, blinking caret included
+    if (!lines.some(l => l.trim())) {
+      el.closest(".bio").hidden = true;
+      return;
+    }
     // Typewriter off: show the lines as plain text, no blinking caret
     if (T.typewriter === false) {
       el.textContent = lines.join(" · ");

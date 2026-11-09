@@ -54,6 +54,7 @@
       $("username").dataset.text = name;
       $("username").title = "@" + user.username;
       C.tabTitle = name;
+      if (!C.animatedTitle) document.title = name;
     }
 
     // Avatar

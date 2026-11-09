@@ -8,10 +8,45 @@
   const safeUrl = u => (/^https?:\/\//i.test(u || "") ? u : "#");
 
   // ---------- Theme variables ----------
-  root.style.setProperty("--accent", C.theme.accent);
-  root.style.setProperty("--accent2", C.theme.accent2);
-  root.style.setProperty("--card-bg", `rgba(12,12,18,${C.theme.cardOpacity})`);
-  root.style.setProperty("--blur", C.theme.blur + "px");
+  const T = C.theme;
+  const rgba = (hex, a) => {
+    const n = parseInt(hex.replace("#", ""), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  };
+  const FONTS = {
+    "inter":          ['"Inter", system-ui, sans-serif', "Inter:wght@400;500;600;700;800"],
+    "poppins":        ['"Poppins", system-ui, sans-serif', "Poppins:wght@400;500;600;700;800"],
+    "outfit":         ['"Outfit", system-ui, sans-serif', "Outfit:wght@400;500;600;700;800"],
+    "space-grotesk":  ['"Space Grotesk", system-ui, sans-serif', "Space+Grotesk:wght@400;500;600;700"],
+    "jetbrains-mono": ['"JetBrains Mono", ui-monospace, monospace', "JetBrains+Mono:wght@400;600;800"],
+    "press-start":    ['"Press Start 2P", ui-monospace, monospace', "Press+Start+2P"]
+  };
+  const font = FONTS[T.font] || FONTS.inter;
+  if (T.font && T.font !== "inter") {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${font[1]}&display=swap`;
+    document.head.appendChild(link);
+  }
+  const ICON_COLORS = { white: "#e4e4e7", accent: T.accent, accent2: T.accent2 };
+  const vars = {
+    "--accent": T.accent,
+    "--accent2": T.accent2,
+    "--card-bg": `rgba(12,12,18,${T.cardOpacity})`,
+    "--blur": T.blur + "px",
+    "--font": font[0],
+    "--text": T.textColor,
+    "--card-width": T.cardWidth + "px",
+    "--radius": T.radius + "px",
+    "--card-glow": rgba(T.accent, T.glow),
+    "--avatar-size": T.avatarSize + "px",
+    "--avatar-radius": { circle: "50%", rounded: "22%", square: "6px" }[T.avatarShape] || "50%",
+    "--name-size": T.nameSize + "rem",
+    "--icon-size": T.iconSize + "px",
+    "--icon-color": ICON_COLORS[T.iconColor] || ICON_COLORS.white,
+    "--bg-dim": C.background.dim || 0
+  };
+  for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
 
   // ---------- Profile ----------
   $("avatar").src = C.avatar;
@@ -81,7 +116,8 @@
   } else $("presence").hidden = true;
 
   // ---------- View counter (real, counted by the server) ----------
-  animateCount($("views"), C.views || 0);
+  if (T.showViews === false) $("views-wrap").hidden = true;
+  else animateCount($("views"), C.views || 0);
 
   function animateCount(el, target) {
     const dur = 1500, t0 = performance.now();
@@ -94,13 +130,20 @@
 
   // ---------- Typewriter bio ----------
   function typewriter(el, lines) {
+    // Typewriter off: show the lines as plain text, no blinking caret
+    if (T.typewriter === false) {
+      el.textContent = lines.join(" · ");
+      document.querySelector(".caret").hidden = true;
+      return;
+    }
+    const sp = T.typeSpeed || 1;   // 2 = twice as fast, 0.5 = half speed
     let li = 0, ci = 0, deleting = false;
     (function tick() {
       const line = lines[li];
       el.textContent = line.slice(0, ci);
-      if (!deleting && ci < line.length) { ci++; setTimeout(tick, 70); }
+      if (!deleting && ci < line.length) { ci++; setTimeout(tick, 70 / sp); }
       else if (!deleting) { deleting = true; setTimeout(tick, 1800); }
-      else if (ci > 0) { ci--; setTimeout(tick, 35); }
+      else if (ci > 0) { ci--; setTimeout(tick, 35 / sp); }
       else { deleting = false; li = (li + 1) % lines.length; setTimeout(tick, 400); }
     })();
   }
@@ -126,7 +169,8 @@
       const x = (e.clientX - (r.left + r.width / 2)) / r.width;
       const y = (e.clientY - (r.top + r.height / 2)) / r.height;
       const cx = Math.max(-1, Math.min(1, x)), cy = Math.max(-1, Math.min(1, y));
-      card.style.transform = `perspective(1000px) rotateY(${cx * 10}deg) rotateX(${-cy * 10}deg)`;
+      const deg = T.tiltStrength || 10;
+      card.style.transform = `perspective(1000px) rotateY(${cx * deg}deg) rotateX(${-cy * deg}deg)`;
       card.style.setProperty("--gx", (cx + 1) * 50 + "%");
       card.style.setProperty("--gy", (cy + 1) * 50 + "%");
     });
@@ -140,27 +184,45 @@
   audio.volume = M.volume;
   $("volume").value = M.volume;
 
+  let started = false;   // only show "PAUSED" once the song has actually played
+
   function loadTrack(i) {
     if (!M.tracks.length) return;
     track = (i + M.tracks.length) % M.tracks.length;
     audio.src = encodeURI(M.tracks[track].src);
     $("track-title").textContent = M.tracks[track].title;
   }
-  function play() {
-    audio.play().then(setPlaying, () => {
-      $("track-title").textContent = "Add mp3s to assets/music";
-      setPaused();
-    });
+  function nextIndex() {
+    if (M.shuffle && M.tracks.length > 1) {
+      let n;
+      do { n = Math.floor(Math.random() * M.tracks.length); } while (n === track);
+      return n;
+    }
+    return track + 1;
   }
-  function setPlaying() { $("icon-play").hidden = true; $("icon-pause").hidden = false; }
-  function setPaused() { $("icon-play").hidden = false; $("icon-pause").hidden = true; }
+  // If the browser blocks autoplay, just stay paused and keep the song title
+  function play() { audio.play().catch(() => setPaused()); }
+  function setPlaying() {
+    started = true;
+    $("icon-play").hidden = true; $("icon-pause").hidden = false;
+    $("player").classList.remove("is-paused"); $("paused-tag").hidden = true;
+  }
+  function setPaused() {
+    $("icon-play").hidden = false; $("icon-pause").hidden = true;
+    $("player").classList.toggle("is-paused", started); $("paused-tag").hidden = !started;
+  }
 
   if (!M.enabled || !M.tracks.length) $("player").hidden = true;
   else loadTrack(0);
 
-  $("play-btn").onclick = () => (audio.paused ? play() : (audio.pause(), setPaused()));
-  $("next-btn").onclick = () => { loadTrack(track + 1); play(); };
-  audio.onended = () => { loadTrack(track + 1); play(); };
+  audio.addEventListener("play", setPlaying);
+  audio.addEventListener("pause", setPaused);
+  $("play-btn").onclick = () => (audio.paused ? play() : audio.pause());
+  $("next-btn").onclick = () => { loadTrack(nextIndex()); play(); };
+  audio.onended = () => {
+    if (M.loop) { audio.currentTime = 0; play(); }
+    else { loadTrack(nextIndex()); play(); }
+  };
   audio.onerror = () => { $("track-title").textContent = "Track not found"; setPaused(); };
   audio.ontimeupdate = () => {
     const d = audio.duration || 0;
@@ -177,7 +239,16 @@
     audio.muted = false;
     updateMuteIcon();
   };
-  $("mute-btn").onclick = () => { audio.muted = !audio.muted; updateMuteIcon(); };
+  // Phones: tap the speaker to show/hide the slider. Computers: hover shows it, click mutes.
+  const touch = matchMedia("(hover: none)").matches;
+  $("mute-btn").onclick = e => {
+    e.stopPropagation();
+    if (touch) $("volume-wrap").classList.toggle("open");
+    else { audio.muted = !audio.muted; updateMuteIcon(); }
+  };
+  if (touch) document.addEventListener("click", e => {
+    if (!$("volume-wrap").contains(e.target)) $("volume-wrap").classList.remove("open");
+  });
   function updateMuteIcon() {
     const m = audio.muted || audio.volume === 0;
     $("icon-vol").hidden = m; $("icon-mute").hidden = !m;

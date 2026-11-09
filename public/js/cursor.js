@@ -1,30 +1,55 @@
-/* Cursor trail effects: sparkle | dots | none */
+/* Cursor / finger trail: sparkle | dots | glow | bubbles | none
+   Options (from the dashboard): size, length, colour, show on phones */
 (function () {
-  const mode = window.CONFIG.cursor.trail;
+  const C = window.CONFIG;
+  const opt = C.cursor || {};
+  const mode = opt.trail || "sparkle";
   const canvas = document.getElementById("cursor-canvas");
-  if (mode === "none" || matchMedia("(pointer: coarse)").matches) { canvas.hidden = true; return; }
+  const isTouch = matchMedia("(hover: none)").matches;
+  if (mode === "none" || (isTouch && opt.touch === false)) { canvas.hidden = true; return; }
 
   const ctx = canvas.getContext("2d");
-  const { accent, accent2 } = window.CONFIG.theme;
+  const size = opt.size || 1;                 // 0.5 – 3
+  const decay = 0.025 / (opt.length || 1);    // longer length = slower fade
+  const colors = opt.colorMode === "custom" ? [opt.color] : [C.theme.accent, C.theme.accent2];
+  const pick = () => colors[(Math.random() * colors.length) | 0];
   let parts = [];
+  let dpr = 1;
 
-  function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = innerWidth * dpr;
+    canvas.height = innerHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
   addEventListener("resize", resize);
   resize();
 
-  addEventListener("mousemove", e => {
-    const n = mode === "sparkle" ? 2 : 1;
-    for (let i = 0; i < n; i++) {
-      parts.push({
-        x: e.clientX, y: e.clientY,
-        vx: (Math.random() - 0.5) * (mode === "sparkle" ? 2 : 0.3),
-        vy: (Math.random() - 0.5) * (mode === "sparkle" ? 2 : 0.3) + (mode === "sparkle" ? 0.6 : 0),
-        life: 1,
-        size: mode === "sparkle" ? Math.random() * 3 + 1.5 : 4,
-        color: Math.random() > 0.5 ? accent : accent2
-      });
+  let last = null;
+  function spawn(x, y) {
+    // Fill in the gap between fast moves so the trail stays smooth
+    const steps = last ? Math.min(6, Math.max(1, Math.floor(Math.hypot(x - last.x, y - last.y) / 12))) : 1;
+    for (let s = 1; s <= steps; s++) {
+      const px = last ? last.x + ((x - last.x) * s) / steps : x;
+      const py = last ? last.y + ((y - last.y) * s) / steps : y;
+      if (mode === "sparkle") {
+        for (let i = 0; i < 2; i++) parts.push({ x: px, y: py, vx: (Math.random() - .5) * 2, vy: (Math.random() - .5) * 2 + .6, life: 1, r: (Math.random() * 3 + 1.5) * size, c: pick() });
+      } else if (mode === "dots") {
+        parts.push({ x: px, y: py, vx: 0, vy: 0, life: 1, r: 5 * size, c: pick() });
+      } else if (mode === "glow") {
+        parts.push({ x: px, y: py, vx: 0, vy: 0, life: 1, r: 9 * size, c: pick() });
+      } else if (mode === "bubbles") {
+        if (Math.random() < .5) parts.push({ x: px, y: py, vx: (Math.random() - .5) * .6, vy: -(Math.random() * 1 + .4), life: 1, r: (Math.random() * 5 + 3) * size, c: pick() });
+      }
     }
-  });
+    last = { x, y };
+  }
+
+  addEventListener("mousemove", e => spawn(e.clientX, e.clientY));
+  addEventListener("mouseleave", () => (last = null));
+  addEventListener("touchstart", e => { last = null; const t = e.touches[0]; spawn(t.clientX, t.clientY); }, { passive: true });
+  addEventListener("touchmove", e => { const t = e.touches[0]; spawn(t.clientX, t.clientY); }, { passive: true });
+  addEventListener("touchend", () => (last = null), { passive: true });
 
   function star(x, y, r) {
     ctx.beginPath();
@@ -37,19 +62,39 @@
     ctx.fill();
   }
 
-  (function loop() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  let prev = performance.now();
+  (function loop(now) {
+    const dt = Math.min((now - prev) / 16.67, 3) || 1;  // same speed on 60 Hz and 120 Hz screens
+    prev = now;
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    if (parts.length > 600) parts.splice(0, parts.length - 600);
     parts = parts.filter(p => p.life > 0);
+
     for (const p of parts) {
-      p.x += p.vx; p.y += p.vy; p.life -= 0.025;
-      ctx.globalAlpha = Math.max(p.life, 0);
-      ctx.fillStyle = p.color;
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur = 8;
-      if (mode === "sparkle") star(p.x, p.y, p.size * 1.6);
-      else { ctx.beginPath(); ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2); ctx.fill(); }
+      p.x += p.vx * dt; p.y += p.vy * dt; p.life -= decay * dt;
+      const a = Math.max(p.life, 0);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = ctx.strokeStyle = p.c;
+      ctx.shadowColor = p.c;
+
+      if (mode === "sparkle") {
+        ctx.shadowBlur = 8;
+        star(p.x, p.y, p.r * 1.6);
+      } else if (mode === "dots") {
+        ctx.shadowBlur = 6;
+        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(p.r * a, .5), 0, Math.PI * 2); ctx.fill();
+      } else if (mode === "glow") {
+        ctx.shadowBlur = 18 * size;
+        ctx.globalAlpha = a * .5;
+        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(p.r * a, .5), 0, Math.PI * 2); ctx.fill();
+      } else if (mode === "bubbles") {
+        ctx.shadowBlur = 4;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1.4 - a * .4), 0, Math.PI * 2); ctx.stroke();
+      }
     }
     ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
     requestAnimationFrame(loop);
-  })();
+  })(prev);
 })();

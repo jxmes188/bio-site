@@ -13,18 +13,24 @@ const multer = require("multer");
 const { db, DATA_DIR } = require("./db");
 const auth = require("./auth");
 const { defaultProfile, sanitizeProfile, BADGE_ICONS } = require("./profile");
+const mail = require("./mail");
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, "..", "public");
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
 const VIEW_SECRET = process.env.VIEW_SECRET || crypto.randomBytes(16).toString("hex");
 const QUOTA_BYTES = 150 * 1024 * 1024; // per user storage
+const SITE_URL = (process.env.SITE_URL || "").replace(/\/+$/, ""); // e.g. https://goyslop.work
+const VERIFY_HOURS = 24;                 // confirm link lifetime; unconfirmed accounts are deleted after this
+const SIGNUPS_PER_IP_PER_DAY = 3;
+const RESEND_COOLDOWN_MS = 60 * 1000;
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const RESERVED = new Set([
   "api", "dashboard", "login", "logout", "signup", "register", "signin", "settings", "admin",
   "uploads", "css", "js", "img", "assets", "static", "public", "help", "about", "terms",
-  "privacy", "support", "home", "index", "www", "root", "null", "undefined", "profile", "user", "users"
+  "privacy", "support", "home", "index", "www", "root", "null", "undefined", "profile", "user", "users",
+  "verify", "confirm", "reset", "email", "mail"
 ]);
 const USERNAME_RE = /^(?![.])(?!.*[.]$)[a-z0-9_.]{2,20}$/;
 
@@ -83,10 +89,46 @@ function usernameProblem(u) {
   if (getUserByName(u)) return "That username is already taken";
   return null;
 }
+// ---------- Email confirmation ----------
+function siteBase(req) {
+  return SITE_URL || `${req.protocol}://${req.get("host")}`;
+}
+
+async function sendVerifyEmail(req, user) {
+  const token = crypto.randomBytes(32).toString("hex");
+  db.prepare("DELETE FROM email_tokens WHERE user_id = ?").run(user.id);
+  db.prepare("INSERT INTO email_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)")
+    .run(auth.sha256(token), user.id, Date.now() + VERIFY_HOURS * 3600e3);
+  db.prepare("UPDATE users SET verify_sent_at = ? WHERE id = ?").run(Date.now(), user.id);
+  const base = siteBase(req);
+  await mail.sendVerification(user.email, user.username, `${base}/verify?token=${token}`, new URL(base).host);
+}
+
+// Unconfirmed accounts older than 24h are deleted so their usernames free up again
+function cleanupUnverified() {
+  const cutoff = Date.now() - VERIFY_HOURS * 3600e3;
+  for (const u of db.prepare("SELECT id FROM users WHERE email_verified = 0 AND created_at < ?").all(cutoff)) {
+    db.prepare("DELETE FROM users WHERE id = ?").run(u.id);
+    fs.rmSync(path.join(UPLOAD_DIR, String(u.id)), { recursive: true, force: true });
+  }
+  db.prepare("DELETE FROM signup_log WHERE created_at < ?").run(Date.now() - 864e5);
+  db.prepare("DELETE FROM email_tokens WHERE expires_at < ?").run(Date.now());
+}
+cleanupUnverified();
+setInterval(cleanupUnverified, 3600e3).unref();
+
+function requireVerified(req, res, next) {
+  const u = db.prepare("SELECT email_verified FROM users WHERE id = ?").get(req.user.id);
+  if (!u || !u.email_verified) return res.status(403).json({ error: "Confirm your email first. Check your inbox for the link." });
+  next();
+}
+
 function meResponse(user) {
   return {
     username: user.username,
     email: user.email,
+    emailVerified: !!user.email_verified,
+    verifySentAt: user.verify_sent_at,
     views: user.views,
     badges: JSON.parse(user.badges || "[]"),
     profile: readProfile(user),
@@ -104,7 +146,7 @@ app.get("/api/check/:username", (req, res) => {
   res.json({ available: !problem, reason: problem });
 });
 
-app.post("/api/signup", authLimiter, (req, res) => {
+app.post("/api/signup", authLimiter, async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
@@ -118,10 +160,63 @@ app.post("/api/signup", authLimiter, (req, res) => {
   if (password.length < 8 || password.length > 200)
     return res.status(400).json({ error: "Password must be at least 8 characters", field: "password" });
 
-  const info = db.prepare("INSERT INTO users (username, email, pass_hash, profile, created_at) VALUES (?, ?, ?, ?, ?)")
+  // Limit how many accounts one connection can create per day
+  const ipHash = auth.sha256(`${req.ip}|${VIEW_SECRET}`);
+  const recent = db.prepare("SELECT COUNT(*) n FROM signup_log WHERE ip_hash = ? AND created_at > ?").get(ipHash, Date.now() - 864e5).n;
+  if (recent >= SIGNUPS_PER_IP_PER_DAY)
+    return res.status(429).json({ error: "Too many accounts created from this connection today. Try again tomorrow." });
+
+  const info = db.prepare("INSERT INTO users (username, email, pass_hash, profile, created_at, email_verified) VALUES (?, ?, ?, ?, ?, 0)")
     .run(username, email, auth.hashPassword(password), JSON.stringify(defaultProfile(username)), Date.now());
-  auth.createSession(res, Number(info.lastInsertRowid), req.secure);
-  res.json({ ok: true, username });
+  db.prepare("INSERT INTO signup_log (ip_hash, created_at) VALUES (?, ?)").run(ipHash, Date.now());
+  const userId = Number(info.lastInsertRowid);
+  auth.createSession(res, userId, req.secure);
+
+  let emailSent = true;
+  try { await sendVerifyEmail(req, getUserById(userId)); }
+  catch (err) { emailSent = false; console.error("Verification email failed:", err.message); }
+  res.json({ ok: true, username, emailSent });
+});
+
+// Link from the confirmation email
+app.get("/verify", (req, res) => {
+  const token = String(req.query.token || "");
+  const row = token && db.prepare("SELECT * FROM email_tokens WHERE token_hash = ? AND expires_at > ?").get(auth.sha256(token), Date.now());
+  if (!row) {
+    return res.status(400).send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Link expired</title><link rel="icon" href="/img/favicon.svg"><link rel="stylesheet" href="/css/app.css"></head>
+      <body><div class="glow-bg"></div><main class="center-page"><div><h1>Oops</h1>
+      <p>This confirmation link is invalid or has expired.<br>Sign in and press "Resend email" to get a new one.</p>
+      <a class="btn btn-primary" href="/#signin">Sign in</a></div></main></body></html>`);
+  }
+  db.prepare("UPDATE users SET email_verified = 1 WHERE id = ?").run(row.user_id);
+  db.prepare("DELETE FROM email_tokens WHERE user_id = ?").run(row.user_id);
+  if (!req.user || req.user.id !== row.user_id) auth.createSession(res, row.user_id, req.secure);
+  res.redirect("/dashboard?verified=1");
+});
+
+app.post("/api/me/resend-verification", auth.requireUser, async (req, res) => {
+  const user = getUserById(req.user.id);
+  if (user.email_verified) return res.status(400).json({ error: "Your email is already confirmed" });
+  const wait = user.verify_sent_at + RESEND_COOLDOWN_MS - Date.now();
+  if (wait > 0) return res.status(429).json({ error: `Wait ${Math.ceil(wait / 1000)}s before sending another email` });
+  try { await sendVerifyEmail(req, user); }
+  catch (err) { console.error("Verification email failed:", err.message); return res.status(502).json({ error: "Couldn't send the email. Try again in a minute." }); }
+  res.json(meResponse(getUserById(user.id)));
+});
+
+// Fix a typo'd email (only before it's confirmed)
+app.post("/api/me/email", auth.requireUser, authLimiter, async (req, res) => {
+  const user = getUserById(req.user.id);
+  if (user.email_verified) return res.status(400).json({ error: "Your email is already confirmed" });
+  const email = String(req.body.email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) return res.status(400).json({ error: "Enter a valid email" });
+  if (db.prepare("SELECT 1 FROM users WHERE email = ? AND id != ?").get(email, user.id))
+    return res.status(400).json({ error: "That email already has an account" });
+  db.prepare("UPDATE users SET email = ? WHERE id = ?").run(email, user.id);
+  try { await sendVerifyEmail(req, getUserById(user.id)); }
+  catch (err) { console.error("Verification email failed:", err.message); return res.status(502).json({ error: "Email updated, but sending failed. Press Resend in a minute." }); }
+  res.json(meResponse(getUserById(user.id)));
 });
 
 app.post("/api/login", authLimiter, (req, res) => {
@@ -192,7 +287,7 @@ function removeFile(f) {
   fs.promises.unlink(path.join(UPLOAD_DIR, String(f.user_id), f.filename)).catch(() => {});
 }
 
-app.post("/api/me/upload/:kind", auth.requireUser, (req, res, next) => {
+app.post("/api/me/upload/:kind", auth.requireUser, requireVerified, (req, res, next) => {
   const kind = req.params.kind;
   const k = KINDS[kind];
   if (!k) return res.status(400).json({ error: "Unknown upload type" });
@@ -254,7 +349,9 @@ app.delete("/api/me/files/:id", auth.requireUser, (req, res) => {
 // ---------- Public profile API ----------
 app.get("/api/profile/:username", (req, res) => {
   const user = getUserByName(req.params.username);
-  if (!user) return res.status(404).json({ error: "User not found" });
+  // Unconfirmed pages are hidden from everyone except their owner (for the dashboard preview)
+  if (!user || (!user.email_verified && (!req.user || req.user.id !== user.id)))
+    return res.status(404).json({ error: "User not found" });
 
   // Count one view per visitor per day (visitor = hashed IP + browser, never stored raw)
   if (req.query.preview !== "1") {
@@ -283,7 +380,7 @@ app.get("/dashboard", (req, res) => (req.user ? res.sendFile(path.join(PUBLIC, "
 app.get("/:username", (req, res, next) => {
   const name = req.params.username;
   const user = getUserByName(name);
-  if (!user) return next();
+  if (!user || (!user.email_verified && (!req.user || req.user.id !== user.id))) return next();
   if (name !== user.username) return res.redirect(301, "/" + user.username);
   res.sendFile(path.join(PUBLIC, "profile.html"));
 });

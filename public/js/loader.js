@@ -29,7 +29,7 @@
     presence: { ...p.presence, image: p.avatar || "/img/avatar.svg" },
     music: { ...p.music, autoplay: p.music.autoplay && !preview },
     theme: p.theme,
-    background: { type: p.background.type, video: p.background.url, image: p.background.url, color: p.background.color },
+    background: { ...p.background, video: p.background.url, image: p.background.url },
     cursor: p.cursor,
     splash: { ...p.splash, enabled: p.splash.enabled && !preview },
     tabTitle: p.displayName || data.username,

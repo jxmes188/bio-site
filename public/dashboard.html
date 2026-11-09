@@ -29,6 +29,23 @@
   <div class="layout">
     <!-- ================= EDITOR ================= -->
     <main class="editor" id="editor">
+      <!-- Shown until the user confirms their email -->
+      <section class="verify-banner" id="verify-banner" hidden>
+        <div>
+          <b>Confirm your email to publish your page.</b>
+          <p class="hint">We sent a link to <b id="vb-email"></b>. Until you click it, your page is hidden from everyone and you can't upload files. Unconfirmed accounts are deleted after 24 hours.</p>
+        </div>
+        <div class="row wrap">
+          <button class="btn btn-primary btn-sm" id="vb-resend">Resend email</button>
+          <button class="btn btn-ghost btn-sm" id="vb-change">Wrong email?</button>
+          <span class="hint" id="vb-msg"></span>
+        </div>
+        <form class="row" id="vb-form" hidden>
+          <input class="input" type="email" id="vb-new-email" placeholder="new@email.com" autocomplete="email" required />
+          <button class="btn btn-ghost btn-sm" type="submit">Update &amp; resend</button>
+        </form>
+      </section>
+
       <nav class="section-nav" id="section-nav">
         <a href="#s-profile">Profile</a>
         <a href="#s-images">Images</a>
@@ -38,6 +55,8 @@
         <a href="#s-links">Links</a>
         <a href="#s-discord">Discord</a>
         <a href="#s-look">Look</a>
+        <a href="#s-text">Text</a>
+        <a href="#s-cursor">Cursor</a>
         <a href="#s-account">Account</a>
       </nav>
 
@@ -116,6 +135,25 @@
             <span class="hint" id="bg-file-name">Images up to 30 MB, or MP4 / WEBM video</span>
           </div>
         </div>
+        <div class="grid-2" id="bg-anim-opts">
+          <label class="field"><span>Animation speed <b data-val="background.speed" data-fmt="x"></b></span>
+            <input type="range" min="0.1" max="3" step="0.1" data-path="background.speed" data-type="number" />
+            <span class="hint">Slide left to slow the effect down.</span>
+          </label>
+          <label class="field"><span>Amount <b data-val="background.density" data-fmt="x"></b></span>
+            <input type="range" min="0.25" max="2" step="0.05" data-path="background.density" data-type="number" />
+            <span class="hint">How many particles, stars or matrix columns.</span>
+          </label>
+          <label class="field"><span>Effect colour</span><input type="color" class="color" data-path="background.effectColor" /></label>
+        </div>
+        <div class="grid-2">
+          <label class="field"><span>Darken background <b data-val="background.dim" data-fmt="%"></b></span>
+            <input type="range" min="0" max="0.9" step="0.05" data-path="background.dim" data-type="number" />
+          </label>
+          <label class="field" id="bg-blur-wrap"><span>Blur image / video <b data-val="background.blur" data-fmt="px"></b></span>
+            <input type="range" min="0" max="20" step="1" data-path="background.blur" data-type="number" />
+          </label>
+        </div>
       </section>
 
       <!-- Music -->
@@ -124,6 +162,8 @@
         <div class="row wrap">
           <label class="check"><input type="checkbox" data-path="music.enabled" /> Show music player</label>
           <label class="check"><input type="checkbox" data-path="music.autoplay" /> Autoplay after "click to enter"</label>
+          <label class="check"><input type="checkbox" data-path="music.shuffle" /> Shuffle</label>
+          <label class="check"><input type="checkbox" data-path="music.loop" /> Repeat the same song</label>
         </div>
         <label class="field"><span>Default volume <b id="vol-val"></b></span>
           <input type="range" min="0" max="1" step="0.05" data-path="music.volume" data-type="number" />
@@ -191,10 +231,8 @@
               <option value="glow">Glow</option><option value="none">None</option>
             </select>
           </label>
-          <label class="field"><span>Cursor trail</span>
-            <select class="input" data-path="cursor.trail">
-              <option value="sparkle">Sparkles</option><option value="dots">Dots</option><option value="none">None</option>
-            </select>
+          <label class="field"><span>Card glow <b data-val="theme.glow" data-fmt="%"></b></span>
+            <input type="range" min="0" max="0.6" step="0.02" data-path="theme.glow" data-type="number" />
           </label>
           <label class="field"><span>Card opacity <b id="op-val"></b></span>
             <input type="range" min="0" max="1" step="0.05" data-path="theme.cardOpacity" data-type="number" />
@@ -202,13 +240,87 @@
           <label class="field"><span>Card blur <b id="blur-val"></b></span>
             <input type="range" min="0" max="40" step="1" data-path="theme.blur" data-type="number" />
           </label>
+          <label class="field"><span>Card width <b data-val="theme.cardWidth" data-fmt="px"></b></span>
+            <input type="range" min="360" max="680" step="10" data-path="theme.cardWidth" data-type="number" />
+          </label>
+          <label class="field"><span>Corner roundness <b data-val="theme.radius" data-fmt="px"></b></span>
+            <input type="range" min="0" max="36" step="1" data-path="theme.radius" data-type="number" />
+          </label>
+          <label class="field"><span>Avatar shape</span>
+            <select class="input" data-path="theme.avatarShape">
+              <option value="circle">Circle</option><option value="rounded">Rounded square</option><option value="square">Square</option>
+            </select>
+          </label>
+          <label class="field"><span>Avatar size <b data-val="theme.avatarSize" data-fmt="px"></b></span>
+            <input type="range" min="64" max="160" step="2" data-path="theme.avatarSize" data-type="number" />
+          </label>
+          <label class="field"><span>Social icon colour</span>
+            <select class="input" data-path="theme.iconColor">
+              <option value="white">White</option><option value="accent">Accent colour</option><option value="accent2">Second colour</option>
+            </select>
+          </label>
+          <label class="field"><span>Social icon size <b data-val="theme.iconSize" data-fmt="px"></b></span>
+            <input type="range" min="18" max="40" step="1" data-path="theme.iconSize" data-type="number" />
+          </label>
         </div>
         <div class="row wrap">
-          <label class="check"><input type="checkbox" data-path="theme.tilt" /> 3D tilt on hover</label>
+          <label class="check"><input type="checkbox" data-path="theme.tilt" /> 3D tilt when the mouse moves</label>
+          <label class="check"><input type="checkbox" data-path="theme.showViews" /> Show view counter</label>
           <label class="check"><input type="checkbox" data-path="animatedTitle" /> Scrolling tab title</label>
           <label class="check"><input type="checkbox" data-path="splash.enabled" /> "Click to enter" screen</label>
         </div>
+        <label class="field" id="tilt-strength-wrap"><span>Tilt strength <b data-val="theme.tiltStrength" data-fmt="deg"></b></span>
+          <input type="range" min="2" max="30" step="1" data-path="theme.tiltStrength" data-type="number" />
+          <span class="hint">How far the card leans as the mouse moves (computers only).</span>
+        </label>
         <label class="field"><span>Enter screen text</span><input class="input" data-path="splash.text" maxlength="60" /></label>
+      </section>
+
+      <!-- Text -->
+      <section class="panel" id="s-text">
+        <h2>Text</h2>
+        <div class="grid-2">
+          <label class="field"><span>Font</span>
+            <select class="input" data-path="theme.font">
+              <option value="inter">Inter</option><option value="poppins">Poppins</option><option value="outfit">Outfit</option>
+              <option value="space-grotesk">Space Grotesk</option><option value="jetbrains-mono">JetBrains Mono</option><option value="press-start">Press Start (pixel)</option>
+            </select>
+          </label>
+          <label class="field"><span>Text colour</span><input type="color" class="color" data-path="theme.textColor" /></label>
+          <label class="field"><span>Name size <b data-val="theme.nameSize" data-fmt="x"></b></span>
+            <input type="range" min="1.2" max="3.2" step="0.1" data-path="theme.nameSize" data-type="number" />
+          </label>
+          <label class="field" id="type-speed-wrap"><span>Typing speed <b data-val="theme.typeSpeed" data-fmt="x"></b></span>
+            <input type="range" min="0.25" max="3" step="0.25" data-path="theme.typeSpeed" data-type="number" />
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" data-path="theme.typewriter" /> Typewriter effect on the bio</label>
+      </section>
+
+      <!-- Cursor -->
+      <section class="panel" id="s-cursor">
+        <h2>Cursor trail</h2>
+        <div class="grid-2">
+          <label class="field"><span>Trail style</span>
+            <select class="input" data-path="cursor.trail">
+              <option value="sparkle">Sparkles</option><option value="dots">Dots</option><option value="glow">Glow</option>
+              <option value="bubbles">Bubbles</option><option value="none">None</option>
+            </select>
+          </label>
+          <label class="field" data-cursor-opt><span>Trail colour</span>
+            <select class="input" data-path="cursor.colorMode">
+              <option value="theme">Accent + second colour</option><option value="custom">Custom colour</option>
+            </select>
+          </label>
+          <label class="field" data-cursor-opt><span>Size <b data-val="cursor.size" data-fmt="x"></b></span>
+            <input type="range" min="0.5" max="3" step="0.1" data-path="cursor.size" data-type="number" />
+          </label>
+          <label class="field" data-cursor-opt><span>Length <b data-val="cursor.length" data-fmt="x"></b></span>
+            <input type="range" min="0.3" max="3" step="0.1" data-path="cursor.length" data-type="number" />
+          </label>
+          <label class="field" id="cursor-color-wrap"><span>Custom colour</span><input type="color" class="color" data-path="cursor.color" /></label>
+        </div>
+        <label class="check" data-cursor-opt><input type="checkbox" data-path="cursor.touch" /> Show the trail when visitors drag a finger on phones</label>
       </section>
 
       <!-- Account -->

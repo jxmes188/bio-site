@@ -46,9 +46,32 @@ db.exec(`
     PRIMARY KEY (user_id, visitor_hash, day)
   );
 
+  CREATE TABLE IF NOT EXISTS email_tokens (
+    token_hash  TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at  INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS signup_log (
+    ip_hash     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+  CREATE INDEX IF NOT EXISTS idx_signup_ip ON signup_log(ip_hash, created_at);
 `);
+
+// ---------- Migrations for databases created before email confirmation ----------
+const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+if (!userCols.includes("email_verified")) {
+  db.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0");
+  // Accounts that existed before this feature are trusted
+  db.exec("UPDATE users SET email_verified = 1");
+}
+if (!userCols.includes("verify_sent_at")) {
+  db.exec("ALTER TABLE users ADD COLUMN verify_sent_at INTEGER NOT NULL DEFAULT 0");
+}
 
 // Clear expired sessions on start
 db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(Date.now());

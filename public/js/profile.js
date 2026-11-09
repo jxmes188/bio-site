@@ -64,7 +64,7 @@
   // Badges
   if (C.badges.length) {
     $("badges").innerHTML = C.badges.map(b =>
-      `<span class="badge" data-tip="${esc(b.label)}">${ICONS[b.icon] || ""}</span>`
+      `<span class="badge" data-tip="${esc(b.label)}"${/^#[0-9a-f]{6}$/i.test(b.color || "") ? ` style="color:${b.color}"` : ""}>${ICONS[b.icon] || ""}</span>`
     ).join("");
   } else $("badges").hidden = true;
 

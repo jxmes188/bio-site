@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Admin</title>
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/css/dashboard.css" />
+  <link rel="stylesheet" href="/css/admin.css" />
+</head>
+<body>
+  <div class="glow-bg"></div>
+
+  <header class="topbar">
+    <a class="brand" href="/admin"><img src="/img/favicon.svg" alt="" /><span>Admin</span></a>
+    <div class="topbar-right">
+      <span class="hint">Signed in as <b id="admin-name"></b></span>
+      <a class="btn btn-ghost btn-sm" href="/dashboard">Dashboard</a>
+      <button class="btn btn-ghost btn-sm" id="lock-btn" hidden>Lock</button>
+    </div>
+  </header>
+
+  <!-- ===== Code screen ===== -->
+  <main class="center-page" id="lock-screen" hidden>
+    <form class="auth-card lock-card" id="unlock-form" novalidate>
+      <h2>Admin access</h2>
+      <p class="hint">Enter the admin code to continue.</p>
+      <input class="input" type="password" id="code" autocomplete="off" placeholder="Admin code" aria-label="Admin code" />
+      <p class="error-msg" id="code-error"></p>
+      <button class="btn btn-primary" type="submit" id="unlock-btn">Unlock</button>
+    </form>
+  </main>
+
+  <!-- ===== Admin panel ===== -->
+  <main class="admin" id="panel" hidden>
+    <nav class="section-nav" id="tabs">
+      <a href="#overview" data-tab="overview">Overview</a>
+      <a href="#users" data-tab="users">Users</a>
+      <a href="#badges" data-tab="badges">Badges</a>
+      <a href="#blocked" data-tab="blocked">Blocked names</a>
+      <a href="#pending" data-tab="pending">Pending sign-ups</a>
+      <a href="#log" data-tab="log">Admin log</a>
+    </nav>
+
+    <!-- Overview -->
+    <section class="panel" data-view="overview">
+      <h2>Overview</h2>
+      <div class="stats" id="stats"></div>
+      <div class="grid-2">
+        <div><span class="label">Newest users</span><ul class="mini-list" id="newest"></ul></div>
+        <div><span class="label">Most views</span><ul class="mini-list" id="top-views"></ul></div>
+      </div>
+    </section>
+
+    <!-- Users -->
+    <section class="panel" data-view="users" hidden>
+      <h2>Users <span class="hint" id="user-count"></span></h2>
+      <div class="toolbar">
+        <input class="input" id="user-search" placeholder="Search username or email" autocomplete="off" />
+        <select class="input" id="user-sort" aria-label="Sort">
+          <option value="new">Newest</option><option value="old">Oldest</option>
+          <option value="views">Most views</option><option value="name">A–Z</option>
+        </select>
+        <select class="input" id="user-filter" aria-label="Filter">
+          <option value="">Everyone</option><option value="banned">Banned</option><option value="unverified">Unconfirmed</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="user-table">
+          <thead><tr><th>User</th><th>Email</th><th>Joined</th><th>Views</th><th>Badges</th><th>Status</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="row pager">
+        <button class="btn btn-ghost btn-sm" id="prev-page">← Prev</button>
+        <span class="hint" id="page-info"></span>
+        <button class="btn btn-ghost btn-sm" id="next-page">Next →</button>
+      </div>
+    </section>
+
+    <!-- Badges -->
+    <section class="panel" data-view="badges" hidden>
+      <h2>Badges</h2>
+      <p class="hint">Badges show under a user's name on their page. Give them to people from the Users tab.</p>
+      <ul class="rows" id="badge-list"></ul>
+      <form class="list-row new-badge" id="new-badge">
+        <span class="badge-preview" id="nb-preview"></span>
+        <input class="input grow" id="nb-name" placeholder="New badge name, e.g. Moderator" maxlength="30" />
+        <select class="input" id="nb-icon" aria-label="Icon"></select>
+        <input type="color" class="color small" id="nb-color" value="#38bdf8" aria-label="Colour" />
+        <button class="btn btn-primary btn-sm" type="submit">Add badge</button>
+      </form>
+    </section>
+
+    <!-- Blocked usernames -->
+    <section class="panel" data-view="blocked" hidden>
+      <h2>Blocked usernames</h2>
+      <p class="hint">Nobody can sign up with these names. Accounts that already have one keep it.</p>
+      <form class="row" id="block-form">
+        <input class="input" id="block-name" placeholder="username" maxlength="20" />
+        <button class="btn btn-primary btn-sm" type="submit">Block</button>
+      </form>
+      <div class="chips" id="blocked-list"></div>
+    </section>
+
+    <!-- Pending sign-ups -->
+    <section class="panel" data-view="pending" hidden>
+      <h2>Pending sign-ups</h2>
+      <p class="hint">People who were sent a code but haven't typed it yet. Codes expire after 15 minutes.</p>
+      <div class="table-wrap">
+        <table class="table" id="pending-table">
+          <thead><tr><th>Username</th><th>Email</th><th>Started</th><th>Wrong tries</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <button class="btn btn-danger btn-sm" id="clear-pending">Clear all</button>
+    </section>
+
+    <!-- Log -->
+    <section class="panel" data-view="log" hidden>
+      <h2>Admin log</h2>
+      <div class="table-wrap">
+        <table class="table" id="log-table">
+          <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== User editor (pop-up) ===== -->
+  <div class="modal" id="user-modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="um-title">
+      <div class="modal-head">
+        <div>
+          <h2 id="um-title"></h2>
+          <a class="hint" id="um-link" target="_blank" rel="noopener"></a>
+        </div>
+        <button class="btn btn-ghost btn-icon" id="um-close" aria-label="Close">✕</button>
+      </div>
+      <p class="hint" id="um-meta"></p>
+
+      <div class="um-section">
+        <span class="label">Account</span>
+        <div class="grid-2">
+          <label class="field"><span>Username</span><input class="input" id="um-username" maxlength="20" /></label>
+          <label class="field"><span>Email</span><input class="input" id="um-email" type="email" /></label>
+          <label class="field"><span>Views</span><input class="input" id="um-views" type="number" min="0" /></label>
+        </div>
+        <button class="btn btn-primary btn-sm" id="um-save">Save account</button>
+      </div>
+
+      <div class="um-section">
+        <span class="label">Badges</span>
+        <div class="chips" id="um-badges"></div>
+        <button class="btn btn-primary btn-sm" id="um-save-badges">Save badges</button>
+      </div>
+
+      <div class="um-section">
+        <span class="label">Password &amp; sessions</span>
+        <div class="row wrap">
+          <input class="input" id="um-password" type="text" placeholder="New password (8+ characters)" autocomplete="off" />
+          <button class="btn btn-ghost btn-sm" id="um-set-password">Set password</button>
+          <button class="btn btn-ghost btn-sm" id="um-signout">Sign out everywhere</button>
+        </div>
+      </div>
+
+      <div class="um-section">
+        <span class="label">Uploaded files</span>
+        <ul class="rows" id="um-files"></ul>
+      </div>
+
+      <div class="um-section danger-zone">
+        <span class="label">Danger zone</span>
+        <div class="row wrap">
+          <button class="btn btn-danger btn-sm" id="um-ban"></button>
+          <button class="btn btn-danger btn-sm" id="um-reset">Reset page to default</button>
+          <label class="check"><input type="checkbox" id="um-reset-files" /> also delete their files</label>
+        </div>
+        <div class="row wrap">
+          <input class="input" id="um-delete-confirm" placeholder="Type the username to delete" autocomplete="off" />
+          <button class="btn btn-danger btn-sm" id="um-delete">Delete account</button>
+          <label class="check"><input type="checkbox" id="um-block" /> block this username</label>
+        </div>
+      </div>
+      <p class="error-msg" id="um-error"></p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="/js/icons.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

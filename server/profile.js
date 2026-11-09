@@ -2,7 +2,7 @@
 
 const SOCIAL_ICONS = ["discord", "github", "youtube", "tiktok", "instagram", "x", "spotify", "steam", "twitch", "link"];
 const LINK_ICONS = ["link", "heart", "star", "bolt", "fire", "code", "crown"];
-const BADGE_ICONS = ["verified", "crown", "code", "star", "bolt", "fire", "heart"];
+const BADGE_ICONS = ["verified", "crown", "shield", "code", "star", "bolt", "fire", "heart", "gem", "hammer", "sparkles"];
 const BG_TYPES = ["particles", "stars", "matrix", "image", "video", "none"];
 const STATUSES = ["online", "idle", "dnd", "offline"];
 const NAME_FX = ["rainbow", "glow", "gradient", "none"];

@@ -74,6 +74,18 @@ app.use("/uploads", express.static(UPLOAD_DIR, {
 }));
 
 // ---------- Helpers ----------
+// Accounts allowed to open /admin (they still need the admin code). Set ADMIN_USERNAMES=lock,other on Railway.
+const ADMINS = new Set((process.env.ADMIN_USERNAMES || "lock").split(",").map(s => s.trim().toLowerCase()).filter(Boolean));
+
+// Users store badge ids; turn them into {icon, label, color} from the badge catalog
+function resolveBadges(json) {
+  let ids = [];
+  try { ids = JSON.parse(json || "[]"); } catch {}
+  if (!Array.isArray(ids) || !ids.length) return [];
+  const all = db.prepare("SELECT * FROM badges ORDER BY sort, id").all();
+  return all.filter(b => ids.includes(b.id) && BADGE_ICONS.includes(b.icon)).map(b => ({ id: b.id, icon: b.icon, label: b.name, color: b.color }));
+}
+
 const getUserByName = name => db.prepare("SELECT * FROM users WHERE username = ?").get(String(name).toLowerCase());
 const getUserById = id => db.prepare("SELECT * FROM users WHERE id = ?").get(id);
 const fileUrl = f => `/uploads/${f.user_id}/${f.filename}`;
@@ -96,6 +108,7 @@ const getVerifiedByEmail = e => db.prepare("SELECT * FROM users WHERE email = ? 
 function usernameProblem(u) {
   if (!USERNAME_RE.test(u)) return "2–20 characters: letters, numbers, _ and . only";
   if (RESERVED.has(u)) return "That username is reserved";
+  if (db.prepare("SELECT 1 FROM blocked_usernames WHERE name = ?").get(u)) return "That username isn't available";
   if (getVerifiedByName(u)) return "That username is already taken";
   return null;
 }
@@ -135,7 +148,8 @@ function meResponse(user) {
     username: user.username,
     email: user.email,
     views: user.views,
-    badges: JSON.parse(user.badges || "[]"),
+    badges: resolveBadges(user.badges),
+    isAdmin: ADMINS.has(user.username),
     profile: readProfile(user),
     files: listFiles(user.id).map(f => ({ id: f.id, kind: f.kind, url: fileUrl(f), name: f.original_name, size: f.size })),
     quota: QUOTA_BYTES
@@ -245,7 +259,7 @@ app.post("/api/signup/resend", codeLimiter, async (req, res) => {
 // Always answers the same way, so nobody can use it to find out which emails have accounts.
 app.post("/api/password/forgot", authLimiter, async (req, res) => {
   const login = String(req.body.login || "").trim().toLowerCase();
-  const user = login && db.prepare("SELECT * FROM users WHERE (username = ? OR email = ?) AND email_verified = 1").get(login, login);
+  const user = login && db.prepare("SELECT * FROM users WHERE (username = ? OR email = ?) AND email_verified = 1 AND banned = 0").get(login, login);
   const id = crypto.randomBytes(16).toString("hex");
   if (user) {
     const recent = db.prepare("SELECT COUNT(*) n FROM password_resets WHERE user_id = ? AND created_at > ?").get(user.id, Date.now() - 3600e3).n;
@@ -308,6 +322,7 @@ app.post("/api/login", authLimiter, (req, res) => {
   const user = db.prepare("SELECT * FROM users WHERE (username = ? OR email = ?) AND email_verified = 1").get(login, login);
   if (!user || !auth.verifyPassword(password, user.pass_hash))
     return res.status(401).json({ error: "Wrong username/email or password" });
+  if (user.banned) return res.status(403).json({ error: "This account has been suspended." });
   auth.createSession(res, user.id, req.secure);
   res.json({ ok: true, username: user.username });
 });
@@ -432,7 +447,7 @@ app.delete("/api/me/files/:id", auth.requireUser, (req, res) => {
 // ---------- Public profile API ----------
 app.get("/api/profile/:username", (req, res) => {
   const user = getUserByName(req.params.username);
-  if (!user || !user.email_verified)
+  if (!user || !user.email_verified || user.banned)
     return res.status(404).json({ error: "User not found" });
 
   // Count one view per visitor per day (visitor = hashed IP + browser, never stored raw)
@@ -448,9 +463,15 @@ app.get("/api/profile/:username", (req, res) => {
     username: fresh.username,
     views: fresh.views,
     createdAt: fresh.created_at,
-    badges: JSON.parse(fresh.badges || "[]").filter(b => BADGE_ICONS.includes(b.icon)),
+    badges: resolveBadges(fresh.badges),
     profile: readProfile(fresh)
   });
+});
+
+// ---------- Admin ----------
+require("./admin-panel")(app, {
+  db, auth, ADMINS, PUBLIC, UPLOAD_DIR, USERNAME_RE, RESERVED,
+  getUserById, readProfile, saveProfile, defaultProfile, sanitizeProfile, ownFileSet, listFiles, fileUrl, removeFile, resolveBadges
 });
 
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
@@ -463,7 +484,7 @@ app.get("/dashboard", (req, res) => (req.user ? res.sendFile(path.join(PUBLIC, "
 app.get("/:username", (req, res, next) => {
   const name = req.params.username;
   const user = getUserByName(name);
-  if (!user || !user.email_verified) return next();
+  if (!user || !user.email_verified || user.banned) return next();
   if (name !== user.username) return res.redirect(301, "/" + user.username);
   res.sendFile(path.join(PUBLIC, "profile.html"));
 });

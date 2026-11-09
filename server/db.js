@@ -77,6 +77,35 @@ db.exec(`
     created_at  INTEGER NOT NULL
   );
 
+  -- ---------- Admin ----------
+  CREATE TABLE IF NOT EXISTS badges (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    icon        TEXT NOT NULL,
+    color       TEXT NOT NULL,
+    sort        INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS admin_sessions (
+    token_hash  TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at  INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS admin_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin       TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    target      TEXT NOT NULL DEFAULT '',
+    details     TEXT NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS blocked_usernames (
+    name        TEXT PRIMARY KEY COLLATE NOCASE,
+    created_at  INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_signup_ip ON signup_log(ip_hash, created_at);
@@ -92,8 +121,32 @@ if (!userCols.includes("email_verified")) {
 if (!userCols.includes("verify_sent_at")) {
   db.exec("ALTER TABLE users ADD COLUMN verify_sent_at INTEGER NOT NULL DEFAULT 0");
 }
+if (!userCols.includes("banned")) {
+  db.exec("ALTER TABLE users ADD COLUMN banned INTEGER NOT NULL DEFAULT 0");
+}
+
+// ---------- Badge catalog (editable from the admin page) ----------
+if (db.prepare("SELECT COUNT(*) n FROM badges").get().n === 0) {
+  const seed = [
+    ["Owner", "crown", "#facc15"], ["Staff", "shield", "#38bdf8"], ["Verified", "verified", "#a855f7"],
+    ["Developer", "code", "#22c55e"], ["Early Supporter", "star", "#f59e0b"], ["Booster", "bolt", "#ec4899"],
+    ["Popular", "fire", "#f97316"], ["Friend", "heart", "#f43f5e"]
+  ];
+  const ins = db.prepare("INSERT INTO badges (name, icon, color, sort) VALUES (?, ?, ?, ?)");
+  seed.forEach(([n, i, c], k) => ins.run(n, i, c, k));
+
+  // Users used to store badges as [{icon, label}]; switch them to badge ids
+  const byIcon = Object.fromEntries(db.prepare("SELECT id, icon FROM badges").all().map(b => [b.icon, b.id]));
+  for (const u of db.prepare("SELECT id, badges FROM users").all()) {
+    let list = [];
+    try { list = JSON.parse(u.badges || "[]"); } catch {}
+    const ids = [...new Set(list.map(b => (typeof b === "number" ? b : byIcon[b && b.icon])).filter(Boolean))];
+    db.prepare("UPDATE users SET badges = ? WHERE id = ?").run(JSON.stringify(ids), u.id);
+  }
+}
 
 // Clear expired sessions on start
 db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(Date.now());
+db.prepare("DELETE FROM admin_sessions WHERE expires_at < ?").run(Date.now());
 
 module.exports = { db, DATA_DIR };

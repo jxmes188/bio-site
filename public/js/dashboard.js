@@ -86,6 +86,7 @@
     const used = me.files.reduce((s, f) => s + f.size, 0);
     $("acct-storage").textContent = `${fmtMB(used)} of ${fmtMB(me.quota)}`;
     document.title = `Dashboard · ${me.username}`;
+    $("admin-link").hidden = !me.isAdmin;
     renderAll();
     updateDirty();
   }

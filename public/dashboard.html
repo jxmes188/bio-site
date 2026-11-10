@@ -4,10 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Dashboard</title>
+  <meta name="theme-color" content="#000000" />
   <link rel="icon" href="/img/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/dashboard.css" />
 </head>
 <body>
@@ -15,23 +16,18 @@
 
     <!-- ===== Sidebar (desktop) ===== -->
     <aside class="side">
-      <a class="side-brand" href="/dashboard"><img src="/img/favicon.svg" alt="" /><span class="site-name">bio</span></a>
+      <a class="side-brand" href="/"><span class="brand-mark"><svg viewBox="0 0 64 64"><path d="M32 6c1.8 12.6 8 18.9 20.6 20.6v.5C40 28.9 33.8 35.2 32 47.8h-.5C29.7 35.2 23.4 28.9 10.8 27.1v-.5C23.4 24.9 29.7 18.6 31.5 6z"/></svg></span><span class="site-name">bio</span></a>
       <nav class="side-nav" id="side-nav" aria-label="Sections"></nav>
       <div class="side-foot">
         <a class="side-page" id="side-page" href="#" target="_blank" rel="noopener">
           <img id="side-avatar" src="/img/avatar.svg" alt="" />
           <span><b id="side-name"></b><small id="side-link"></small></span>
+          <i data-i="external"></i>
         </a>
         <div class="side-actions">
-          <button class="icon-btn" id="theme-toggle" title="Light / dark" aria-label="Switch light or dark dashboard">
-            <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.4A5.5 5.5 0 0 1 13.4 3.1 9 9 0 0 0 12 3z"/></svg>
-          </button>
-          <a class="icon-btn" id="admin-link" href="/admin" title="Admin" aria-label="Admin" hidden>
-            <svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5.2 3.4 9.9 8 11 4.6-1.1 8-5.8 8-11V5l-8-3z"/></svg>
-          </a>
-          <button class="icon-btn" id="logout" title="Sign out" aria-label="Sign out">
-            <svg viewBox="0 0 24 24"><path d="M10 4H5v16h5v-2H7V6h3V4zm6.6 3.6-1.4 1.4 2 2H9v2h8.2l-2 2 1.4 1.4L21 12l-4.4-4.4z"/></svg>
-          </button>
+          <button class="icon-btn" id="theme-toggle" title="Light / dark" aria-label="Switch light or dark dashboard"></button>
+          <a class="icon-btn" id="admin-link" href="/admin" title="Admin" aria-label="Admin" hidden><i data-i="shield"></i></a>
+          <button class="icon-btn" id="logout" title="Log out" aria-label="Log out"><i data-i="logout"></i></button>
         </div>
       </div>
     </aside>
@@ -43,18 +39,14 @@
           <h1 id="section-title">Profile</h1>
         </div>
         <div class="search" id="search">
-          <svg viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 0 1 5.2 10.4l4.4 4.4-1.4 1.4-4.4-4.4A6.5 6.5 0 1 1 10.5 4zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/></svg>
-          <input id="search-input" type="search" placeholder="Search settings…" autocomplete="off" aria-label="Search settings" />
+          <i data-i="search"></i>
+          <input id="search-input" type="search" placeholder="Search settings" autocomplete="off" aria-label="Search settings" />
           <kbd>/</kbd>
           <ul class="search-results" id="search-results" role="listbox" hidden></ul>
         </div>
         <div class="bar-actions">
-          <button class="icon-btn" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
-            <svg viewBox="0 0 24 24"><path d="M12.5 8c-2.7 0-5 1-6.9 2.6L3 8v7h7l-2.7-2.7A7.9 7.9 0 0 1 20 15.5l2-.6C20.8 11 17 8 12.5 8z"/></svg>
-          </button>
-          <button class="icon-btn" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>
-            <svg viewBox="0 0 24 24"><path d="M11.5 8c2.7 0 5 1 6.9 2.6L21 8v7h-7l2.7-2.7A7.9 7.9 0 0 0 4 15.5l-2-.6C3.2 11 7 8 11.5 8z"/></svg>
-          </button>
+          <button class="icon-btn" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><i data-i="undo"></i></button>
+          <button class="icon-btn" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><i data-i="redo"></i></button>
           <span class="save-state" id="save-state" role="status"><i></i><span>Saved</span></span>
         </div>
       </header>
@@ -75,8 +67,8 @@
       <div class="preview-head">
         <span class="preview-label"><i class="live-dot"></i>Live preview</span>
         <div class="preview-actions">
-          <a class="btn btn-ghost btn-sm" id="open-page" href="#" target="_blank" rel="noopener">Open ↗</a>
-          <button class="icon-btn preview-close" id="preview-close" aria-label="Close preview">✕</button>
+          <a class="btn btn-ghost btn-sm" id="open-page" href="#" target="_blank" rel="noopener">Open <i data-i="external"></i></a>
+          <button class="icon-btn preview-close" id="preview-close" aria-label="Close preview"><i data-i="x"></i></button>
         </div>
       </div>
       <div class="phone"><div class="phone-screen" id="preview-stage"></div></div>
@@ -84,10 +76,7 @@
   </div>
 
   <!-- ===== Phone: bottom tabs + preview button ===== -->
-  <button class="preview-fab" id="preview-open">
-    <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
-    Preview
-  </button>
+  <button class="preview-fab" id="preview-open"><i data-i="eye"></i>Preview</button>
   <nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
 
   <div class="toast" id="toast" role="status" hidden></div>
@@ -103,7 +92,9 @@
     </div>
   </div>
 
+  <script src="/js/ui-icons.js"></script>
   <script src="/js/icons.js"></script>
+  <script src="/js/site-cursor.js"></script>
   <script src="/js/dash-schema.js"></script>
   <script src="/js/dashboard.js"></script>
 </body>

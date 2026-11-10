@@ -20,7 +20,9 @@
     for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
     return el;
   }
-  const iconEl = (name, color) => h("span", { class: "badge-icons", style: color ? `color:${color}` : null, html: ICONS[name] || "" });
+  // A badge's icon: its uploaded picture, or one from the built-in set
+  const badgeIcon = b => (b.image ? h("img", { src: b.image, alt: "" }) : h("span", { html: ICONS[b.icon] || "", style: "display:contents" }));
+  const iconEl = b => h("span", { class: "badge-icons", title: b.description || b.name, style: `color:${b.color}` }, badgeIcon(b));
   const fmtDate = t => new Date(t).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   const fmtTime = t => new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const fmtMB = b => (b / 1048576).toFixed(1) + " MB";
@@ -128,7 +130,7 @@
       h("td", {}, u.email),
       h("td", {}, fmtDate(u.createdAt)),
       h("td", {}, u.views.toLocaleString()),
-      h("td", {}, ...badges.filter(b => u.badges.includes(b.id)).map(b => iconEl(b.icon, b.color))),
+      h("td", {}, ...badges.filter(b => u.badges.includes(b.id)).map(iconEl)),
       h("td", {}, u.isAdmin ? h("span", { class: "tag admin" }, "admin") : null, " ",
         u.banned ? h("span", { class: "tag bad" }, "banned") : !u.verified ? h("span", { class: "tag warn" }, "unconfirmed") : h("span", { class: "tag ok" }, "active"))
     )) : [h("tr", {}, h("td", { class: "empty", colspan: "6" }, "No users found"))]));
@@ -173,7 +175,7 @@
     $("um-badges").replaceChildren(...badges.map(b => {
       const on = u.badges.includes(b.id);
       const input = h("input", { type: "checkbox", checked: on, value: String(b.id) });
-      const chip = h("label", { class: "chip" + (on ? " on" : "") }, input, iconEl(b.icon, b.color), b.name);
+      const chip = h("label", { class: "chip" + (on ? " on" : "") }, input, iconEl(b), b.name);
       input.addEventListener("change", () => chip.classList.toggle("on", input.checked));
       return chip;
     }));
@@ -259,57 +261,170 @@
   });
 
   // ---------- Badges ----------
-  function iconSelect(value, onchange) {
-    return h("select", { class: "input icon-select", "aria-label": "Icon", onchange },
-      icons.map(i => h("option", { value: i, selected: i === value }, i)));
-  }
-
   async function loadBadges() {
     const r = await api("GET", "/api/admin/badges");
     badges = r.badges; icons = r.icons;
     $("badge-list").replaceChildren(...badges.map((b, i) => {
-      const preview = h("span", { class: "badge-preview", style: `color:${b.color}`, html: ICONS[b.icon] || "" });
-      const name = h("input", { class: "input grow", value: b.name, maxlength: "30", "aria-label": "Badge name" });
-      const color = h("input", { type: "color", class: "color small", value: b.color, "aria-label": "Colour",
-        oninput: e => (preview.style.color = e.target.value) });
-      const icon = iconSelect(b.icon, e => (preview.innerHTML = ICONS[e.target.value] || ""));
-      const save = extra => api("PATCH", "/api/admin/badges/" + b.id, { name: name.value, icon: icon.value, color: color.value, ...extra })
-        .then(r => { badges = r.badges; loadBadges(); toast("Badge saved ✓"); }, err => toast(err.message, true));
-      return h("li", { class: "list-row" },
-        preview, name, icon, color,
-        h("span", { class: "count" }, `${b.users} user${b.users === 1 ? "" : "s"}`),
-        h("div", { class: "row-btns" },
-          h("button", { class: "btn btn-ghost btn-sm", disabled: i === 0, title: "Move up", onclick: () => save({ move: "up" }) }, "↑"),
-          h("button", { class: "btn btn-ghost btn-sm", disabled: i === badges.length - 1, title: "Move down", onclick: () => save({ move: "down" }) }, "↓"),
-          h("button", { class: "btn btn-primary btn-sm", onclick: () => save() }, "Save"),
-          h("button", { class: "btn btn-danger btn-sm", onclick: () => {
-            if (!confirm(`Delete the "${b.name}" badge? It's removed from ${b.users} user(s).`)) return;
-            api("DELETE", "/api/admin/badges/" + b.id).then(() => { loadBadges(); toast("Badge deleted"); }, err => toast(err.message, true));
-          } }, "Delete")
-        )
-      );
+      const move = (dir, e) => {
+        e.stopPropagation();
+        api("PATCH", "/api/admin/badges/" + b.id, { move: dir }).then(loadBadges, err => toast(err.message, true));
+      };
+      return h("li", {},
+        h("div", { class: "badge-card", role: "button", tabindex: "0", onclick: () => openBadge(b), onkeydown: e => { if (e.key === "Enter") openBadge(b); } },
+          bigBadge(b),
+          h("span", { class: "meta" }, h("b", {}, b.name), h("small", {}, (b.description || "No hover text") + " · " + `${b.users} user${b.users === 1 ? "" : "s"}`)),
+          h("span", { class: "order" },
+            h("button", { type: "button", title: "Move up", "aria-label": "Move up", disabled: i === 0, html: UI("chevronDown"), style: "transform:rotate(180deg)", onclick: e => move("up", e) }),
+            h("button", { type: "button", title: "Move down", "aria-label": "Move down", disabled: i === badges.length - 1, html: UI("chevronDown"), onclick: e => move("down", e) }))));
     }));
-    // New badge form
-    if (!$("nb-icon").options.length) {
-      $("nb-icon").replaceChildren(...icons.map(i => h("option", { value: i }, i)));
-      $("nb-icon").value = "shield";
-    }
-    updateNewPreview();
   }
-  function updateNewPreview() {
-    $("nb-preview").innerHTML = ICONS[$("nb-icon").value] || "";
-    $("nb-preview").style.color = $("nb-color").value;
+  const bigBadge = b => {
+    const el = h("span", { class: "badge-big" + (b.glow ? " glow" : ""), style: `--c:${b.color}` }, badgeIcon(b));
+    return el;
+  };
+
+  // Badge editor: name, hover text, colour, glow, icon (set or upload), and who has it
+  let editing = null;          // badge being edited (null = new)
+  let edit = {};               // the editor's current values
+  let pickedFile = null;       // a new picture waiting to be uploaded on save
+  let removePicture = false;
+
+  function openBadge(b) {
+    editing = b || null;
+    edit = b ? { name: b.name, description: b.description || "", color: b.color, glow: !!b.glow, icon: b.icon, image: b.image || "" }
+      : { name: "", description: "", color: "#ffffff", glow: true, icon: "shield", image: "" };
+    pickedFile = null; removePicture = false;
+    $("bm-title").textContent = b ? "Edit badge" : "New badge";
+    $("bm-name").value = edit.name;
+    $("bm-desc").value = edit.description;
+    $("bm-color").value = edit.color;
+    $("bm-glow").checked = edit.glow;
+    $("bm-error").textContent = "";
+    $("bm-delete").hidden = !b;
+    $("bm-holders-wrap").hidden = !b;
+    $("bm-user-search").value = "";
+    $("bm-user-results").hidden = true;
+    $("bm-icons").replaceChildren(...icons.map(name => h("button", { type: "button", title: name, "aria-label": name, "data-icon": name, html: ICONS[name] || "",
+      onclick: () => { edit.icon = name; drawEditor(); } })));
+    iconSource(edit.image ? "file" : "set");
+    drawEditor();
+    if (b) loadHolders();
+    $("badge-modal").hidden = false;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => $("bm-name").focus(), 50);
   }
-  $("nb-icon").addEventListener("change", updateNewPreview);
-  $("nb-color").addEventListener("input", updateNewPreview);
-  $("new-badge").addEventListener("submit", async e => {
-    e.preventDefault();
+  function closeBadge() { $("badge-modal").hidden = true; document.body.style.overflow = ""; editing = null; }
+
+  function iconSource(src) {
+    document.querySelectorAll("[data-src]").forEach(b => b.classList.toggle("on", b.dataset.src === src));
+    $("bm-icons").hidden = src !== "set";
+    $("bm-upload").hidden = src !== "file";
+  }
+  document.querySelectorAll("[data-src]").forEach(b => b.addEventListener("click", () => iconSource(b.dataset.src)));
+
+  // Preview: the uploaded / picked picture wins over the icon set
+  let fileUrl = "";
+  function drawEditor() {
+    edit.name = $("bm-name").value; edit.description = $("bm-desc").value;
+    edit.color = $("bm-color").value; edit.glow = $("bm-glow").checked;
+    const image = pickedFile ? fileUrl : removePicture ? "" : edit.image;
+    const shown = { ...edit, image };
+    $("bm-preview").replaceWith(Object.assign(bigBadge(shown), { id: "bm-preview" }));
+    $("bm-tip-preview").textContent = edit.description || edit.name;
+    $("bm-file-preview").replaceChildren(image ? h("img", { src: image, alt: "" }) : h("span", { class: "hint" }, "none"));
+    $("bm-file-remove").hidden = !image;
+    $("bm-icons").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.icon === edit.icon));
+  }
+  ["bm-name", "bm-desc", "bm-color", "bm-glow"].forEach(id => $(id).addEventListener("input", drawEditor));
+  $("bm-glow").addEventListener("change", drawEditor);
+  $("bm-file-btn").addEventListener("click", () => $("bm-file").click());
+  $("bm-file").addEventListener("change", e => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!/\.(png|svg|ico)$/i.test(f.name)) { $("bm-error").textContent = "Badge icons can be PNG, SVG or ICO"; return; }
+    if (f.size > 256 * 1024) { $("bm-error").textContent = "That file is bigger than 256 KB"; return; }
+    $("bm-error").textContent = "";
+    pickedFile = f;
+    if (fileUrl) URL.revokeObjectURL(fileUrl);
+    fileUrl = URL.createObjectURL(f);
+    drawEditor();
+  });
+  $("bm-file-remove").addEventListener("click", () => { pickedFile = null; removePicture = true; drawEditor(); });
+
+  async function uploadIcon(id, file) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`/api/admin/badges/${id}/icon`, { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Upload failed");
+  }
+
+  $("bm-save").addEventListener("click", async () => {
+    drawEditor();
+    $("bm-error").textContent = "";
+    $("bm-save").disabled = true;
+    const body = { name: edit.name, description: edit.description, color: edit.color, glow: edit.glow, icon: edit.icon };
     try {
-      await api("POST", "/api/admin/badges", { name: $("nb-name").value, icon: $("nb-icon").value, color: $("nb-color").value });
-      $("nb-name").value = "";
-      toast("Badge added ✓");
+      let id = editing && editing.id;
+      if (id) await api("PATCH", "/api/admin/badges/" + id, body);
+      else id = (await api("POST", "/api/admin/badges", body)).id;
+      if (pickedFile) await uploadIcon(id, pickedFile);
+      else if (removePicture && editing && editing.image) await api("DELETE", `/api/admin/badges/${id}/icon`);
+      toast(editing ? "Badge saved ✓" : "Badge created ✓");
+      closeBadge();
+      loadBadges();
+    } catch (err) { if (err.message !== "Locked") $("bm-error").textContent = err.message; }
+    $("bm-save").disabled = false;
+  });
+
+  $("bm-delete").addEventListener("click", async () => {
+    const b = editing;
+    if (!confirm(`Delete the "${b.name}" badge? It's removed from ${b.users} user(s).`)) return;
+    try { await api("DELETE", "/api/admin/badges/" + b.id); closeBadge(); toast("Badge deleted"); loadBadges(); }
+    catch (err) { $("bm-error").textContent = err.message; }
+  });
+  $("new-badge").addEventListener("click", () => openBadge(null));
+  $("bm-close").addEventListener("click", closeBadge);
+  $("bm-cancel").addEventListener("click", closeBadge);
+  $("badge-modal").addEventListener("click", e => { if (e.target === $("badge-modal")) closeBadge(); });
+  addEventListener("keydown", e => { if (e.key === "Escape" && !$("badge-modal").hidden) closeBadge(); });
+
+  // Who has it: list + search to give it to someone
+  async function loadHolders() {
+    const r = await api("GET", `/api/admin/badges/${editing.id}/users`);
+    $("bm-count").textContent = `(${r.users.length})`;
+    $("bm-holders").replaceChildren(...(r.users.length ? r.users.map(u => h("span", { class: "chip" }, "@" + u.username,
+      h("button", { type: "button", title: "Take this badge away", "aria-label": `Take the badge from ${u.username}`, html: UI("x"),
+        onclick: () => giveBadge(u, false) }))) : [h("span", { class: "hint" }, "Nobody has this badge yet.")]));
+  }
+  async function giveBadge(u, give) {
+    try {
+      await api("POST", `/api/admin/badges/${editing.id}/users`, { userId: u.id, give });
+      toast(give ? `Given to @${u.username} ✓` : `Taken from @${u.username}`);
+      loadHolders();
       loadBadges();
     } catch (err) { toast(err.message, true); }
+  }
+  let pickTimer;
+  $("bm-user-search").addEventListener("input", e => {
+    clearTimeout(pickTimer);
+    const q = e.target.value.trim();
+    if (!q) { $("bm-user-results").hidden = true; return; }
+    pickTimer = setTimeout(async () => {
+      try {
+        const r = await api("GET", "/api/admin/users?" + new URLSearchParams({ q }));
+        const list = $("bm-user-results");
+        list.replaceChildren(...(r.users.length ? r.users.slice(0, 8).map(u => {
+          const has = u.badges.includes(editing.id);
+          return h("li", {}, h("span", {}, "@" + u.username, " ", h("small", {}, u.email)),
+            h("button", { type: "button", class: "btn btn-sm " + (has ? "btn-ghost" : "btn-primary"), onclick: () => {
+              list.hidden = true; $("bm-user-search").value = ""; giveBadge(u, !has);
+            } }, has ? "Remove" : "Give"));
+        }) : [h("li", { class: "empty" }, "No users found")]));
+        list.hidden = false;
+      } catch (err) { toast(err.message, true); }
+    }, 250);
   });
 
   // ---------- Blocked usernames ----------

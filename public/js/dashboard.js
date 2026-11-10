@@ -34,8 +34,7 @@
     steam: "https://steamcommunity.com/id/you", twitch: "https://twitch.tv/you", link: "https://yoursite.com"
   };
   const LINK_ICONS = { link: "Link", heart: "Heart", star: "Star", bolt: "Bolt", fire: "Fire", code: "Code", crown: "Crown" };
-  const GRIP = "M9 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm-1.5 8.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM18 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm-1.5 8.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM18 19a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z";
-  const X_ICON = "M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z";
+  const PRESETS = [["arrow", "Arrow"], ["arrow-dark", "Dark"], ["outline", "Outline"], ["soft", "Soft"], ["dot", "Dot"], ["ring", "Ring"], ["crosshair", "Cross"], ["glow", "Glow"]];
 
   // ---------- helpers ----------
   const clone = o => JSON.parse(JSON.stringify(o));
@@ -58,7 +57,7 @@
     for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
     return el;
   }
-  const svg = (d, cls) => h("span", { class: cls || "", html: `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>` });
+  const icon = name => h("span", { class: "ico", html: UI(name) });
   const FMT = {
     x: v => String(+(+v).toFixed(2)) + "×",
     "%": v => Math.round(v * 100) + "%",
@@ -95,7 +94,7 @@
       headers: body ? { "Content-Type": "application/json" } : {},
       body: body ? JSON.stringify(body) : undefined
     });
-    if (res.status === 401) { location.href = "/#signin"; throw new Error("Signed out"); }
+    if (res.status === 401) { location.href = "/login"; throw new Error("Signed out"); }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Something went wrong");
     return data;
@@ -123,6 +122,12 @@
     const fromHash = location.hash.slice(1);
     showSection(SECTIONS.some(s => s.id === fromHash) ? fromHash : "profile");
     refreshPreview();
+    // Coming back from linking Google / Discord
+    const q = new URLSearchParams(location.search);
+    const NAMES = { google: "Google", discord: "Discord" };
+    if (q.get("linked")) toast(`${NAMES[q.get("linked")] || "Account"} connected ✓`);
+    if (q.get("link_error")) toast(`That ${NAMES[q.get("link_error").split("_")[0]] || ""} account is already linked to a different page.`, true);
+    if (location.search) history.replaceState(null, "", location.pathname + location.hash);
   }
 
   function updateIdentity() {
@@ -136,11 +141,11 @@
     document.title = `Dashboard · ${me.username}`;
   }
 
-  // ---------- Dashboard look (light/dark, accent) ----------
+  // ---------- Dashboard look (dark / light / match device; always monochrome) ----------
   function applyPrefs(p) {
     const dark = p.theme === "dark" || (p.theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.dataset.theme = dark ? "dark" : "light";
-    document.documentElement.style.setProperty("--accent", p.accent || "#a855f7");
+    $("theme-toggle").innerHTML = UI(dark ? "sun" : "moon");
   }
   async function savePrefs(patch) {
     me.prefs = { ...me.prefs, ...patch };
@@ -152,9 +157,9 @@
   // ---------- Navigation ----------
   function buildNav() {
     $("side-nav").replaceChildren(...SECTIONS.map(s => h("button", { class: "nav-item", "data-sec": s.id, onclick: () => showSection(s.id) },
-      svg(s.icon), s.label)));
+      icon(s.icon), s.label)));
     $("tabbar").replaceChildren(...SECTIONS.map(s => h("button", { class: "tab", "data-sec": s.id, onclick: () => showSection(s.id) },
-      svg(s.icon), s.short || s.label)));
+      icon(s.icon), h("span", {}, s.short || s.label))));
   }
 
   function showSection(id) {
@@ -451,7 +456,7 @@
       xhr.onload = () => {
         let data = {};
         try { data = JSON.parse(xhr.responseText); } catch (_) {}
-        if (xhr.status === 401) location.href = "/#signin";
+        if (xhr.status === 401) location.href = "/login";
         xhr.status < 300 ? resolve(data) : reject(new Error(data.error || "Upload failed"));
       };
       xhr.onerror = () => reject(new Error("Upload failed. Check your connection."));
@@ -483,13 +488,14 @@
     } catch (e) { toast(e.message, true); }
   }
   // An upload box with click + drag-and-drop
-  function uploadBox({ kind, accept, title, note, thumb, wide, current, removeKind, multiple }) {
+  function uploadBox({ kind, accept, title, note, thumb, wide, current, removeKind, multiple, small }) {
     const bar = h("div");
     const input = h("input", { type: "file", accept, multiple: !!multiple, hidden: true,
       onchange: e => { const files = [...e.target.files]; e.target.value = ""; if (files.length) doUploads(kind, files, bar); } });
     const file = removeKind && me.files.find(f => f.kind === removeKind);
-    const box = h("div", { class: "upload" },
-      thumb !== undefined ? h("div", { class: "upload-thumb" + (wide ? " wide" : ""), style: thumb ? `background-image:url("${encodeURI(thumb)}")` : "" }) : null,
+    const box = h("div", { class: "upload" + (small ? " small" : "") },
+      thumb !== undefined ? h("div", { class: "upload-thumb" + (wide ? " wide" : "") + (small ? " contain" : ""), style: thumb ? `background-image:url("${encodeURI(thumb)}")` : "" },
+        thumb ? null : h("span", { html: UI("upload") })) : null,
       h("div", { class: "upload-body" },
         h("b", {}, title),
         h("small", {}, current || note),
@@ -543,8 +549,8 @@
       });
     });
   }
-  const grip = () => h("span", { class: "handle", title: "Drag to reorder", "aria-label": "Drag to reorder", html: `<svg viewBox="0 0 24 24"><path d="${GRIP}"/></svg>` });
-  const removeBtn = (label, fn) => h("button", { class: "icon-btn", type: "button", title: label, "aria-label": label, onclick: fn, html: `<svg viewBox="0 0 24 24"><path d="${X_ICON}"/></svg>` });
+  const grip = () => h("span", { class: "handle", title: "Drag to reorder", "aria-label": "Drag to reorder", html: UI("grip") });
+  const removeBtn = (label, fn) => h("button", { class: "icon-btn", type: "button", title: label, "aria-label": label, onclick: fn, html: UI("x") });
 
   // ---------- Custom panels ----------
   const BLOCKS = {
@@ -568,10 +574,63 @@
         wrongKind ? h("span", { class: "hint bad" }, `Your current file is ${video ? "an image" : "a video"}. Upload a ${video ? "video" : "picture"} to use this option.`) : null);
     },
 
-    cursorUpload: () => {
+    // Default / one of the presets / your own upload. Shown to visitors on computers (not phones).
+    cursorPicker: () => {
+      const c = draft.cursor;
       const f = me.files.find(x => x.kind === "cursor");
-      return uploadBox({ kind: "cursor", accept: ".png,.gif,.webp", title: "Custom cursor", note: "Small PNG, GIF or WEBP (32×32 works best) · 1 MB",
-        thumb: draft.cursor.image || "", current: f && f.name, removeKind: "cursor" });
+      const pickStyle = (style, preset) => {
+        pushHistory("cursor");
+        c.style = style;
+        if (preset) c.preset = preset;
+        draft.template = "custom";
+        afterChange(true);
+      };
+      const tile = (on, label, img, onclick, extra) => h("button", { type: "button", class: "cursor-tile" + (on ? " on" : ""), "aria-pressed": String(on), title: label, onclick },
+        img ? h("img", { src: img, alt: "" }) : h("span", { class: "cursor-none" }, "Aa"), h("small", {}, label), extra || null);
+      const tiles = [
+        tile(c.style === "default", "Default", "", () => pickStyle("default")),
+        ...PRESETS.map(([id, label]) => tile(c.style === "preset" && c.preset === id, label, `/cursors/${id}.svg`, () => pickStyle("preset", id))),
+        f || c.image ? tile(c.style === "upload", "Yours", c.image || (f && f.url), () => pickStyle("upload")) : null
+      ];
+      return h("div", { class: "field" },
+        h("div", { class: "cursor-grid", role: "group", "aria-label": "Cursor" }, tiles),
+        uploadBox({ kind: "cursor", accept: ".png,.svg,.ico,.cur", title: f ? "Your cursor" : "Upload your own", note: "PNG, SVG, ICO or CUR · 32×32 works best · 256 KB",
+          thumb: c.image || "", current: f && f.name, removeKind: "cursor", small: true }),
+        h("span", { class: "hint" }, "Visitors on a computer see your cursor. Phones and tablets keep their normal touch."));
+    },
+
+    // Drag the blocks under your name into any order
+    order: () => {
+      const arr = draft.theme.order;
+      const NAMES = { presence: ["Activity / Discord card", "chat"], socials: ["Social icons", "globe"], links: ["Link buttons", "link"], player: ["Music player", "music"] };
+      const list = h("ul", { class: "list" }, arr.map((b, i) => h("li", { class: "item", "data-idx": String(i) },
+        grip(), icon(NAMES[b][1]), h("span", { class: "grow" }, NAMES[b][0]),
+        h("div", { class: "row-btns" },
+          h("button", { type: "button", class: "icon-btn", disabled: i === 0, "aria-label": "Move up", html: UI("chevronDown"), style: "transform:rotate(180deg)",
+            onclick: () => { pushHistory(); [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]; afterChange(true); } }),
+          h("button", { type: "button", class: "icon-btn", disabled: i === arr.length - 1, "aria-label": "Move down", html: UI("chevronDown"),
+            onclick: () => { pushHistory(); [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]]; afterChange(true); } })))));
+      sortable(list, arr, () => afterChange(true));
+      return h("div", { class: "field" }, h("span", { class: "field-label" }, "Order of sections"), list,
+        h("span", { class: "hint" }, "Drag to reorder. Sections you haven't set up stay hidden."));
+    },
+
+    // Google / Discord sign-in, connect and disconnect
+    signin: () => {
+      const rows = [["google", "Google"], ["discord", "Discord"]].map(([key, name]) => {
+        const linked = me.linked[key], ready = me.providers[key];
+        return h("li", { class: "item" }, icon(key), h("span", { class: "grow" }, h("b", {}, name), h("small", {}, linked ? "Connected" : ready ? "Not connected" : "Not set up on this site yet")),
+          linked
+            ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => {
+                if (!(await confirmBox(`Disconnect ${name}? You won't be able to log in with it any more.`, "Disconnect"))) return;
+                try { await api("POST", "/api/me/unlink", { provider: key }); me = await api("GET", "/api/me"); render(); toast(`${name} disconnected`); }
+                catch (e) { toast(e.message, true); }
+              } }, "Disconnect")
+            : h("a", { class: "btn btn-ghost btn-sm" + (ready ? "" : " disabled"), href: ready ? `/auth/${key}?link=1` : null, "aria-disabled": ready ? null : "true",
+                onclick: ready ? () => saveNow() : null }, "Connect"));
+      });
+      return h("div", { class: "field" }, h("ul", { class: "list" }, rows),
+        h("span", { class: "hint" }, "Connect one to log in with a single click. You can also always log in with an emailed code."));
     },
 
     templates: () => {
@@ -676,8 +735,8 @@
 
     badges: () => h("div", { class: "field" },
       me.badges.length
-        ? h("div", { class: "badge-list" }, me.badges.map(b => h("span", { class: "badge-chip" },
-            h("span", { style: /^#[0-9a-f]{6}$/i.test(b.color || "") ? `color:${b.color}` : "", html: ICONS[b.icon] || "" }), b.label)))
+        ? h("div", { class: "badge-list" }, me.badges.map(b => h("span", { class: "badge-chip", title: b.tip || b.label },
+            b.image ? h("img", { src: b.image, alt: "" }) : h("span", { style: /^#[0-9a-f]{6}$/i.test(b.color || "") ? `color:${b.color}` : "", html: ICONS[b.icon] || "" }), b.label)))
         : h("span", { class: "hint" }, "You don't have any badges yet. Badges are given out by the site's admins.")),
 
     analytics: () => {
@@ -700,36 +759,41 @@
 
     dashTheme: () => {
       const seg = (val, txt) => h("button", { type: "button", class: me.prefs.theme === val ? "on" : "", onclick: () => { savePrefs({ theme: val }).then(render); render(); } }, txt);
-      const picker = h("input", { type: "color", value: me.prefs.accent, "aria-label": "Dashboard accent colour",
-        oninput: e => applyPrefs({ ...me.prefs, accent: e.target.value }), onchange: e => savePrefs({ accent: e.target.value }) });
       return h("div", { class: "field" },
         h("span", { class: "field-label" }, "Theme"),
-        h("div", { class: "seg" }, seg("light", "Light"), seg("dark", "Dark"), seg("system", "Match device")),
-        h("span", { class: "field-label" }, "Dashboard accent colour"),
-        h("div", { class: "color-row" }, picker),
+        h("div", { class: "seg" }, seg("dark", "Dark"), seg("light", "Light"), seg("system", "Match device")),
         h("label", { class: "switch" }, h("input", { type: "checkbox", checked: me.prefs.advanced, onchange: e => { savePrefs({ advanced: e.target.checked }); for (const k in advanced) delete advanced[k]; storeAdv(); } }), h("span"), "Show advanced settings by default"));
     },
 
+    // Accounts made with Google / Discord have no password yet: they can set one
     password: () => {
-      const cur = h("input", { class: "input", type: "password", autocomplete: "current-password", placeholder: "Current password" });
+      const has = me.hasPassword;
+      const cur = has ? h("input", { class: "input", type: "password", autocomplete: "current-password", placeholder: "Current password" }) : null;
       const next = h("input", { class: "input", type: "password", autocomplete: "new-password", placeholder: "New password (8+ characters)" });
       const msg = h("span", { class: "hint" });
       return h("form", { class: "field", onsubmit: async e => {
         e.preventDefault();
-        try { await api("POST", "/api/me/password", { current: cur.value, next: next.value }); msg.textContent = "Password changed ✓"; msg.className = "hint ok"; cur.value = next.value = ""; }
-        catch (err) { msg.textContent = err.message; msg.className = "hint bad"; }
-      } }, cur, next, h("div", { class: "row" }, h("button", { class: "btn btn-ghost btn-sm", type: "submit" }, "Change password"), msg));
+        try {
+          await api("POST", "/api/me/password", { current: cur ? cur.value : "", next: next.value });
+          msg.textContent = has ? "Password changed ✓" : "Password set ✓"; msg.className = "hint ok";
+          if (cur) cur.value = ""; next.value = "";
+          if (!has) { me.hasPassword = true; setTimeout(render, 1200); }
+        } catch (err) { msg.textContent = err.message; msg.className = "hint bad"; }
+      } },
+      has ? null : h("span", { class: "hint" }, "You sign in with Google or Discord. Set a password to also log in with your email and password."),
+      cur, next, h("div", { class: "row" }, h("button", { class: "btn btn-ghost btn-sm", type: "submit" }, has ? "Change password" : "Set password"), msg));
     },
 
     deleteAccount: () => {
-      const pw = h("input", { class: "input", type: "password", autocomplete: "current-password", placeholder: "Your password" });
+      const has = me.hasPassword;
+      const pw = h("input", { class: "input", type: has ? "password" : "text", autocomplete: has ? "current-password" : "off", placeholder: has ? "Your password" : `Type ${me.username} to confirm` });
       const msg = h("span", { class: "hint" });
       return h("div", { class: "field" },
         h("span", { class: "hint" }, "Deletes your page, uploads and stats for good. This can't be undone."),
         pw, h("div", { class: "row" }, h("button", { class: "btn btn-danger btn-sm", type: "button", onclick: async () => {
-          if (!pw.value) { msg.textContent = "Enter your password first"; msg.className = "hint bad"; return; }
+          if (!pw.value) { msg.textContent = has ? "Enter your password first" : "Type your username first"; msg.className = "hint bad"; return; }
           if (!(await confirmBox(`Delete @${me.username} forever?`, "Delete forever"))) return;
-          try { await api("DELETE", "/api/me", { password: pw.value }); savedJson = JSON.stringify(cleaned()); location.href = "/"; }
+          try { await api("DELETE", "/api/me", has ? { password: pw.value } : { confirm: pw.value }); savedJson = JSON.stringify(cleaned()); location.href = "/"; }
           catch (err) { msg.textContent = err.message; msg.className = "hint bad"; }
         } }, "Delete my account"), msg));
     }

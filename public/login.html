@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Log in</title>
+  <meta name="theme-color" content="#000000" />
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/css/login.css" />
+</head>
+<body>
+  <div class="backdrop"></div>
+  <div class="spotlight"></div>
+
+  <header class="auth-top">
+    <a class="brand" href="/"><span class="brand-mark"><svg viewBox="0 0 64 64"><path d="M32 6c1.8 12.6 8 18.9 20.6 20.6v.5C40 28.9 33.8 35.2 32 47.8h-.5C29.7 35.2 23.4 28.9 10.8 27.1v-.5C23.4 24.9 29.7 18.6 31.5 6z"/></svg></span><span class="site-name">bio</span></a>
+  </header>
+
+  <main class="auth-wrap">
+    <section class="auth-card glass" id="card">
+
+      <!-- ===== Sign in ===== -->
+      <div class="view" id="v-signin">
+        <h1>Welcome back</h1>
+        <p class="sub">Log in to edit your page.</p>
+        <div class="oauth">
+          <a class="btn btn-ghost btn-block oauth-btn" data-provider="google" href="/auth/google"><i data-i="google"></i>Continue with Google</a>
+          <a class="btn btn-ghost btn-block oauth-btn" data-provider="discord" href="/auth/discord"><i data-i="discord"></i>Continue with Discord</a>
+        </div>
+        <div class="divider"><span>or</span></div>
+        <div class="seg" role="tablist" aria-label="How to sign in">
+          <button type="button" class="on" data-method="password" role="tab" aria-selected="true">Password</button>
+          <button type="button" data-method="email" role="tab" aria-selected="false">Email code</button>
+        </div>
+
+        <form class="stack" id="signin-form" novalidate>
+          <label class="field"><span>Username or email</span><input class="input" id="si-login" autocomplete="username" required /></label>
+          <label class="field">
+            <span class="field-head">Password <button type="button" class="text-btn small" id="si-forgot">Forgot?</button></span>
+            <input class="input" id="si-password" type="password" autocomplete="current-password" required />
+          </label>
+          <p class="error-msg" id="si-error" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit" id="si-submit">Log in</button>
+        </form>
+
+        <form class="stack" id="magic-form" hidden novalidate>
+          <label class="field"><span>Email</span><input class="input" id="mg-email" type="email" autocomplete="email" required /></label>
+          <p class="hint">We'll email you a 6-digit code and a one-click sign-in link.</p>
+          <p class="error-msg" id="mg-error" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit" id="mg-submit"><i data-i="mail"></i>Email me a code</button>
+        </form>
+      </div>
+
+      <!-- ===== Email code (sign in) ===== -->
+      <form class="view stack" id="v-magic-code" hidden novalidate>
+        <div class="icon-tile"><i data-i="mail"></i></div>
+        <h1>Check your email</h1>
+        <p class="sub">If <b id="mc-email"></b> has an account, we sent a code and a sign-in link. Both expire in 15 minutes.</p>
+        <input class="input code-input" id="mc-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="6-digit code" />
+        <p class="error-msg" id="mc-error" role="alert"></p>
+        <button class="btn btn-primary btn-block" type="submit" id="mc-submit">Log in</button>
+        <p class="links"><button type="button" class="text-btn" id="mc-resend">Resend</button><span>·</span><button type="button" class="text-btn" data-go="signin">Back</button></p>
+      </form>
+
+      <!-- ===== Sign up ===== -->
+      <div class="view" id="v-signup" hidden>
+        <h1>Create your page</h1>
+        <p class="sub">Your username becomes your link.</p>
+        <div class="oauth">
+          <a class="btn btn-ghost btn-block oauth-btn" data-provider="google" href="/auth/google"><i data-i="google"></i>Sign up with Google</a>
+          <a class="btn btn-ghost btn-block oauth-btn" data-provider="discord" href="/auth/discord"><i data-i="discord"></i>Sign up with Discord</a>
+        </div>
+        <div class="divider"><span>or with email</span></div>
+        <form class="stack" id="signup-form" novalidate>
+          <label class="field">
+            <span>Username</span>
+            <span class="prefix-input"><span class="prefix site-prefix">site/</span><input id="su-username" maxlength="20" autocomplete="username" spellcheck="false" required /></span>
+            <span class="avail" id="su-avail"></span>
+          </label>
+          <label class="field"><span>Email</span><input class="input" id="su-email" type="email" autocomplete="email" required /></label>
+          <label class="field"><span>Password</span><input class="input" id="su-password" type="password" minlength="8" autocomplete="new-password" required /><span class="hint">At least 8 characters</span></label>
+          <p class="error-msg" id="su-error" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit" id="su-submit">Create account</button>
+        </form>
+      </div>
+
+      <!-- ===== Sign up: email code ===== -->
+      <form class="view stack" id="v-verify" hidden novalidate>
+        <div class="icon-tile"><i data-i="mail"></i></div>
+        <h1>Check your email</h1>
+        <p class="sub">We sent a 6-digit code to <b id="code-email"></b>. Type it below to claim <b id="code-username"></b>.</p>
+        <input class="input code-input" id="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="6-digit code" />
+        <p class="error-msg" id="code-error" role="alert"></p>
+        <button class="btn btn-primary btn-block" type="submit" id="code-submit">Verify &amp; create account</button>
+        <p class="links"><button type="button" class="text-btn" id="code-resend">Resend code</button><span>·</span><button type="button" class="text-btn" id="code-back">Change details</button></p>
+        <p class="hint center">Can't find it? Check your spam folder.</p>
+      </form>
+
+      <!-- ===== Forgot password ===== -->
+      <form class="view stack" id="v-forgot" hidden novalidate>
+        <div class="icon-tile"><i data-i="key"></i></div>
+        <h1>Reset your password</h1>
+        <p class="sub">Enter your username or email and we'll send you a 6-digit code.</p>
+        <label class="field"><span>Username or email</span><input class="input" id="fp-login" autocomplete="username" required /></label>
+        <p class="error-msg" id="fp-error" role="alert"></p>
+        <button class="btn btn-primary btn-block" type="submit" id="fp-submit">Send code</button>
+        <p class="links"><button type="button" class="text-btn" data-go="signin">Back to log in</button></p>
+      </form>
+
+      <form class="view stack" id="v-reset" hidden novalidate>
+        <div class="icon-tile"><i data-i="key"></i></div>
+        <h1>Check your email</h1>
+        <p class="sub">If <b id="rs-login"></b> has an account, we sent a 6-digit code to its email.</p>
+        <input class="input code-input" id="rs-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="6-digit code" />
+        <label class="field"><span>New password</span><input class="input" id="rs-password" type="password" minlength="8" autocomplete="new-password" required /><span class="hint">At least 8 characters</span></label>
+        <p class="error-msg" id="rs-error" role="alert"></p>
+        <button class="btn btn-primary btn-block" type="submit" id="rs-submit">Set new password</button>
+        <p class="links"><button type="button" class="text-btn" id="rs-resend">Resend code</button><span>·</span><button type="button" class="text-btn" data-go="signin">Back to log in</button></p>
+      </form>
+
+      <!-- ===== First sign-in with Google / Discord: pick a username ===== -->
+      <form class="view stack" id="v-claim" hidden novalidate>
+        <div class="icon-tile" id="cl-icon"></div>
+        <h1>Pick your username</h1>
+        <p class="sub">Signed in with <span id="cl-provider"></span> as <b id="cl-email"></b>. Your username becomes your link.</p>
+        <label class="field">
+          <span>Username</span>
+          <span class="prefix-input"><span class="prefix site-prefix">site/</span><input id="cl-username" maxlength="20" autocomplete="username" spellcheck="false" required /></span>
+          <span class="avail" id="cl-avail"></span>
+        </label>
+        <p class="error-msg" id="cl-error" role="alert"></p>
+        <button class="btn btn-primary btn-block" type="submit" id="cl-submit">Create my page</button>
+        <p class="links"><a class="text-btn" href="/login">Cancel</a></p>
+      </form>
+
+      <!-- ===== Opening an emailed sign-in link ===== -->
+      <div class="view stack" id="v-busy" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <h1 id="busy-title">Signing you in…</h1>
+        <p class="error-msg center" id="busy-error" role="alert"></p>
+        <p class="links" id="busy-back" hidden><button type="button" class="text-btn" data-go="signin">Back to log in</button></p>
+      </div>
+    </section>
+
+    <p class="switch" id="switch-signup">Don't have a page yet? <a class="text-btn" href="/signup" data-go="signup">Sign up</a></p>
+    <p class="switch" id="switch-signin" hidden>Already have a page? <a class="text-btn" href="/login" data-go="signin">Log in</a></p>
+  </main>
+
+  <script src="/js/ui-icons.js"></script>
+  <script src="/js/site-cursor.js"></script>
+  <script src="/js/login.js"></script>
+</body>
+</html>

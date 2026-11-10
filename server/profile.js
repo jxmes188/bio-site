@@ -10,13 +10,24 @@
 
 const SOCIAL_ICONS = ["discord", "github", "youtube", "tiktok", "instagram", "x", "spotify", "steam", "twitch", "link"];
 const LINK_ICONS = ["link", "heart", "star", "bolt", "fire", "code", "crown"];
-const BADGE_ICONS = ["verified", "crown", "shield", "code", "star", "bolt", "fire", "heart", "gem", "hammer", "sparkles"];
+const BADGE_ICONS = ["verified", "crown", "shield", "code", "star", "bolt", "fire", "heart", "gem", "hammer", "sparkles",
+  "trophy", "rocket", "music", "camera", "palette", "moon", "leaf", "check", "flag", "eye"];
 const BG_TYPES = ["color", "gradient", "image", "video"];
-const BG_EFFECTS = ["none", "particles", "stars", "matrix", "snow", "rain"];
+const BG_EFFECTS = ["none", "particles", "stars", "fireflies", "snow", "rain", "matrix"];
 const ENTRANCES = ["fade", "slide", "zoom", "none"];
 const STATUSES = ["online", "idle", "dnd", "offline"];
-const NAME_FX = ["rainbow", "gradient", "glow", "sparkle", "glitch", "none"];
-const TRAILS = ["sparkle", "dots", "glow", "bubbles", "rainbow", "ghost", "fairy", "hearts", "snowflakes", "none"];
+const NAME_FX = ["rainbow", "gradient", "shimmer", "glow", "sparkle", "glitch", "none"];
+const BIO_FX = ["none", "glow", "shimmer"];
+const TRAILS = ["sparkle", "glow", "ghost", "particles", "ribbon", "hearts", "snowflakes"];
+// Old trails that were removed or redone, and what they turn into
+const OLD_TRAILS = { dots: "particles", bubbles: "particles", fairy: "sparkle", rainbow: "ribbon" };
+const CURSOR_STYLES = ["default", "preset", "upload"];
+// Files in public/cursors/<name>.svg
+const CURSOR_PRESETS = ["arrow", "arrow-dark", "outline", "soft", "dot", "ring", "crosshair", "glow"];
+const HOTSPOTS = ["tip", "center"];
+const HOVERS = ["classic", "lift", "glow", "none"];
+const POSITIONS = ["center", "top"];
+const BLOCKS = ["presence", "socials", "links", "player"];
 const FONTS = ["inter", "poppins", "outfit", "space-grotesk", "jetbrains-mono", "press-start", "playfair", "comfortaa"];
 const AVATAR_SHAPES = ["circle", "rounded", "square"];
 const ICON_COLORS = ["white", "accent", "accent2"];
@@ -46,16 +57,21 @@ function defaultProfile(username) {
       font: "inter", nameFont: "same", nameSize: 2, usernameEffect: "rainbow",
       layout: "card", align: "center",
       cardWidth: 520, cardOpacity: 0.35, blur: 14, radius: 22, glow: 0.18, cardBorder: 1, cardBorderOpacity: 0.1,
-      tilt: true, tiltStrength: 10,
+      cardColor: "#0c0c12", borderColor: "#ffffff", cardPadding: 28, position: "center",
+      tilt: true, tiltStrength: 10, shine: true,
       avatarShape: "circle", avatarSize: 110,
       iconColor: "white", iconSize: 26, iconStyle: "plain",
-      buttonStyle: "glass", buttonRadius: 12,
-      typewriter: true, typeSpeed: 1,
-      showViews: true, showBadges: true
+      buttonStyle: "glass", buttonRadius: 12, hover: "classic",
+      typewriter: true, typeSpeed: 1, bioEffect: "none",
+      order: ["presence", "socials", "links", "player"],
+      showAvatar: true, showStatus: true, showViews: true, showBadges: true
     },
     background: { type: "color", color: "#06060a", color2: "#1e1b4b", angle: 135, url: "", dim: 0, blur: 0, vignette: true },
-    effects: { bg: "particles", speed: 1, density: 1, color: "#a855f7", entrance: "fade" },
-    cursor: { trail: "sparkle", size: 1, length: 1, colorMode: "theme", color: "#a855f7", touch: true, image: "" },
+    effects: { bg: "particles", speed: 1, density: 1, color: "#a855f7", entrance: "fade", interactive: true },
+    cursor: {
+      style: "default", preset: "arrow", hotspot: "tip", image: "",
+      trailOn: true, trail: "sparkle", size: 1, length: 1, density: 1, colorMode: "theme", color: "#a855f7"
+    },
     splash: { enabled: true, text: "click to enter...", blur: 20 },
     animatedTitle: true,
     footer: "",
@@ -191,8 +207,22 @@ function sanitizeProfile(input, username, ownFiles) {
       glow: num(theme.glow, 0, 0.6, T.glow),
       cardBorder: num(theme.cardBorder, 0, 4, T.cardBorder),
       cardBorderOpacity: num(theme.cardBorderOpacity, 0, 1, T.cardBorderOpacity),
+      cardColor: color(theme.cardColor, T.cardColor),
+      borderColor: color(theme.borderColor, T.borderColor),
+      cardPadding: num(theme.cardPadding, 12, 48, T.cardPadding),
+      position: oneOf(theme.position, POSITIONS, T.position),
       tilt: bool(theme.tilt, true),
       tiltStrength: num(theme.tiltStrength, 2, 30, T.tiltStrength),
+      shine: bool(theme.shine, true),
+      hover: oneOf(theme.hover, HOVERS, T.hover),
+      bioEffect: oneOf(theme.bioEffect, BIO_FX, T.bioEffect),
+      // Order of the blocks under the name: every block exactly once
+      order: (() => {
+        const list = (Array.isArray(theme.order) ? theme.order : []).filter((b, i, a) => BLOCKS.includes(b) && a.indexOf(b) === i);
+        return [...list, ...BLOCKS.filter(b => !list.includes(b))];
+      })(),
+      showAvatar: bool(theme.showAvatar, true),
+      showStatus: bool(theme.showStatus, true),
       avatarShape: oneOf(theme.avatarShape, AVATAR_SHAPES, T.avatarShape),
       avatarSize: num(theme.avatarSize, 64, 160, T.avatarSize),
       iconColor: oneOf(theme.iconColor, ICON_COLORS, T.iconColor),
@@ -222,18 +252,31 @@ function sanitizeProfile(input, username, ownFiles) {
       speed: num(fx.speed, 0.1, 3, 1),
       density: num(fx.density, 0.25, 2, 1),
       color: color(fx.color, accent),
-      entrance: oneOf(fx.entrance, ENTRANCES, "fade")
+      entrance: oneOf(fx.entrance, ENTRANCES, "fade"),
+      interactive: bool(fx.interactive, true)
     },
 
-    cursor: {
-      trail: oneOf(cursor.trail, TRAILS, "sparkle"),
-      size: num(cursor.size, 0.5, 3, 1),
-      length: num(cursor.length, 0.3, 3, 1),
-      colorMode: oneOf(cursor.colorMode, COLOR_MODES, "theme"),
-      color: color(cursor.color, accent),
-      touch: bool(cursor.touch, true),
-      image: own(cursor.image)
-    },
+    cursor: (() => {
+      const image = own(cursor.image);
+      // Pages saved before cursor styles existed: an uploaded picture meant "use it"
+      const style = oneOf(cursor.style, CURSOR_STYLES, image ? "upload" : "default");
+      // "none" used to be a trail; it is now the on/off switch
+      const rawTrail = OLD_TRAILS[cursor.trail] || cursor.trail;
+      const trailOn = typeof cursor.trailOn === "boolean" ? cursor.trailOn : cursor.trail !== "none";
+      return {
+        style: style === "upload" && !image ? "default" : style,
+        preset: oneOf(cursor.preset, CURSOR_PRESETS, "arrow"),
+        hotspot: oneOf(cursor.hotspot, HOTSPOTS, "tip"),
+        image,
+        trailOn,
+        trail: oneOf(rawTrail, TRAILS, "sparkle"),
+        size: num(cursor.size, 0.5, 3, 1),
+        length: num(cursor.length, 0.3, 3, 1),
+        density: num(cursor.density, 0.25, 2, 1),
+        colorMode: oneOf(cursor.colorMode, COLOR_MODES, "theme"),
+        color: color(cursor.color, accent)
+      };
+    })(),
     splash: {
       enabled: bool(splash.enabled, true),
       text: str(splash.text, 60) || "click to enter...",
@@ -251,4 +294,4 @@ function sanitizeProfile(input, username, ownFiles) {
   };
 }
 
-module.exports = { defaultProfile, sanitizeProfile, upgradeProfile, BADGE_ICONS };
+module.exports = { defaultProfile, sanitizeProfile, upgradeProfile, BADGE_ICONS, CURSOR_PRESETS };

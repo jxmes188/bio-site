@@ -14,7 +14,8 @@ const crypto = require("crypto");
 
 const ADMIN_COOKIE = "adm";
 const ADMIN_HOURS = 12;
-const BADGE_ICONS = ["verified", "crown", "shield", "code", "star", "bolt", "fire", "heart", "gem", "hammer", "sparkles"];
+const multer = require("multer");
+const { BADGE_ICONS } = require("./profile");
 
 module.exports = function mountAdmin(app, d) {
   const { db, auth, ADMINS } = d;
@@ -64,12 +65,7 @@ module.exports = function mountAdmin(app, d) {
     };
   }
 
-  function deleteUserCompletely(u) {
-    db.prepare("DELETE FROM users WHERE id = ?").run(u.id);   // sessions, files rows etc. cascade
-    db.prepare("DELETE FROM view_log WHERE user_id = ?").run(u.id);
-    db.prepare("DELETE FROM click_log WHERE user_id = ?").run(u.id);
-    fs.rmSync(path.join(d.UPLOAD_DIR, String(u.id)), { recursive: true, force: true });
-  }
+  const deleteUserCompletely = d.deleteUserCompletely;
 
   const codeLimiter = auth.rateLimit({ windowMs: 15 * 60e3, max: 5 });
 
@@ -249,7 +245,15 @@ module.exports = function mountAdmin(app, d) {
   });
 
   // ---------- Badges ----------
-  const badgeList = () => db.prepare("SELECT b.*, (SELECT COUNT(*) FROM users u, json_each(u.badges) j WHERE j.value = b.id) AS users FROM badges b ORDER BY sort, id").all();
+  // Icon: one from the built-in set, or an uploaded picture (PNG / SVG / ICO, 256 KB) in uploads/badges/
+  const BADGE_DIR = path.join(d.UPLOAD_DIR, "badges");
+  fs.mkdirSync(BADGE_DIR, { recursive: true });
+  const BADGE_EXTS = [".png", ".svg", ".ico"];
+  const badgeImagePath = url => (/^\/uploads\/badges\/[a-f0-9]{24}\.(png|svg|ico)$/.test(url || "") ? path.join(BADGE_DIR, path.basename(url)) : null);
+  const removeBadgeImage = url => { const p = badgeImagePath(url); if (p) fs.promises.unlink(p).catch(() => {}); };
+
+  const badgeList = () => db.prepare("SELECT b.*, (SELECT COUNT(*) FROM users u, json_each(u.badges) j WHERE j.value = b.id) AS users FROM badges b ORDER BY sort, id").all()
+    .map(b => ({ ...b, glow: !!b.glow }));
   function cleanBadge(b) {
     const name = String(b.name || "").trim().slice(0, 30);
     const icon = BADGE_ICONS.includes(b.icon) ? b.icon : null;
@@ -257,7 +261,7 @@ module.exports = function mountAdmin(app, d) {
     if (!name) return { error: "Give the badge a name" };
     if (!icon) return { error: "Pick an icon" };
     if (!color) return { error: "Pick a colour" };
-    return { name, icon, color };
+    return { name, icon, color, description: String(b.description || "").trim().slice(0, 80), glow: b.glow ? 1 : 0 };
   }
 
   app.get("/api/admin/badges", admin, (_req, res) => res.json({ badges: badgeList(), icons: BADGE_ICONS }));
@@ -266,9 +270,9 @@ module.exports = function mountAdmin(app, d) {
     const b = cleanBadge(req.body || {});
     if (b.error) return res.status(400).json(b);
     const sort = db.prepare("SELECT COALESCE(MAX(sort), 0) + 1 s FROM badges").get().s;
-    db.prepare("INSERT INTO badges (name, icon, color, sort) VALUES (?, ?, ?, ?)").run(b.name, b.icon, b.color, sort);
+    const info = db.prepare("INSERT INTO badges (name, icon, color, description, glow, sort) VALUES (?, ?, ?, ?, ?, ?)").run(b.name, b.icon, b.color, b.description, b.glow, sort);
     log(req, "create badge", b.name);
-    res.json({ badges: badgeList() });
+    res.json({ badges: badgeList(), id: Number(info.lastInsertRowid) });
   });
 
   app.patch("/api/admin/badges/:id", admin, (req, res) => {
@@ -276,7 +280,7 @@ module.exports = function mountAdmin(app, d) {
     if (!old) return res.status(404).json({ error: "Badge not found" });
     const b = cleanBadge({ ...old, ...req.body });
     if (b.error) return res.status(400).json(b);
-    db.prepare("UPDATE badges SET name = ?, icon = ?, color = ? WHERE id = ?").run(b.name, b.icon, b.color, old.id);
+    db.prepare("UPDATE badges SET name = ?, icon = ?, color = ?, description = ?, glow = ? WHERE id = ?").run(b.name, b.icon, b.color, b.description, b.glow, old.id);
     if (req.body.move === "up" || req.body.move === "down") {
       const all = db.prepare("SELECT id FROM badges ORDER BY sort, id").all().map(r => r.id);
       const i = all.indexOf(old.id), j = req.body.move === "up" ? i - 1 : i + 1;
@@ -291,12 +295,71 @@ module.exports = function mountAdmin(app, d) {
     const b = db.prepare("SELECT * FROM badges WHERE id = ?").get(Number(req.params.id));
     if (!b) return res.status(404).json({ error: "Badge not found" });
     db.prepare("DELETE FROM badges WHERE id = ?").run(b.id);
+    removeBadgeImage(b.image);
     for (const u of db.prepare("SELECT id, badges FROM users").all()) {
       const ids = userIds(u.badges);
       if (ids.includes(b.id)) db.prepare("UPDATE users SET badges = ? WHERE id = ?").run(JSON.stringify(ids.filter(i => i !== b.id)), u.id);
     }
     log(req, "delete badge", b.name);
     res.json({ badges: badgeList() });
+  });
+
+  // Upload / remove a badge's own icon picture
+  const badgeUpload = multer({
+    storage: multer.diskStorage({
+      destination: (_r, _f, cb) => cb(null, BADGE_DIR),
+      filename: (_r, file, cb) => cb(null, crypto.randomBytes(12).toString("hex") + path.extname(file.originalname).toLowerCase())
+    }),
+    limits: { fileSize: 256 * 1024, files: 1 },
+    fileFilter: (_r, file, cb) => BADGE_EXTS.includes(path.extname(file.originalname).toLowerCase())
+      ? cb(null, true) : cb(Object.assign(new Error("Badge icons can be PNG, SVG or ICO"), { status: 400 }))
+  }).single("file");
+  const uploadLimiter = auth.rateLimit({ windowMs: 10 * 60e3, max: 40, message: "Too many uploads. Wait a few minutes." });
+
+  app.post("/api/admin/badges/:id/icon", admin, uploadLimiter, (req, res, next) => {
+    const b = db.prepare("SELECT * FROM badges WHERE id = ?").get(Number(req.params.id));
+    if (!b) return res.status(404).json({ error: "Badge not found" });
+    badgeUpload(req, res, err => {
+      if (err) return next(err);
+      if (!req.file) return res.status(400).json({ error: "No file received" });
+      const ext = path.extname(req.file.filename);
+      const drop = msg => { fs.promises.unlink(req.file.path).catch(() => {}); res.status(400).json({ error: msg }); };
+      if (!d.realTypeMatches(req.file.path, ext)) return drop("That file isn't really the type its name says.");
+      if (ext === ".svg") {
+        const clean = d.cleanSvg(fs.readFileSync(req.file.path, "utf8"));
+        if (!clean) return drop("That SVG has scripts, links or styles in it. Use a plain SVG drawing, or a PNG.");
+        fs.writeFileSync(req.file.path, clean);
+      }
+      removeBadgeImage(b.image);
+      db.prepare("UPDATE badges SET image = ? WHERE id = ?").run(`/uploads/badges/${req.file.filename}`, b.id);
+      log(req, "badge icon", b.name);
+      res.json({ badges: badgeList() });
+    });
+  });
+
+  app.delete("/api/admin/badges/:id/icon", admin, (req, res) => {
+    const b = db.prepare("SELECT * FROM badges WHERE id = ?").get(Number(req.params.id));
+    if (!b) return res.status(404).json({ error: "Badge not found" });
+    removeBadgeImage(b.image);
+    db.prepare("UPDATE badges SET image = '' WHERE id = ?").run(b.id);
+    log(req, "badge icon removed", b.name);
+    res.json({ badges: badgeList() });
+  });
+
+  // Who has a badge, and give / take it
+  app.get("/api/admin/badges/:id/users", admin, (req, res) => {
+    const rows = db.prepare("SELECT u.id, u.username FROM users u, json_each(u.badges) j WHERE j.value = ? ORDER BY u.username LIMIT 500").all(Number(req.params.id));
+    res.json({ users: rows });
+  });
+  app.post("/api/admin/badges/:id/users", admin, (req, res) => {
+    const b = db.prepare("SELECT * FROM badges WHERE id = ?").get(Number(req.params.id));
+    const u = userRow((req.body || {}).userId);
+    if (!b || !u) return res.status(404).json({ error: "Not found" });
+    const ids = userIds(u.badges).filter(i => i !== b.id);
+    if (req.body.give) ids.push(b.id);
+    db.prepare("UPDATE users SET badges = ? WHERE id = ?").run(JSON.stringify(ids), u.id);
+    log(req, req.body.give ? "give badge" : "take badge", u.username, b.name);
+    res.json({ ok: true });
   });
 
   // ---------- Blocked usernames ----------

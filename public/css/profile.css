@@ -412,3 +412,57 @@ svg { fill: currentColor; }
 
 /* Live preview inside the dashboard: never block clicks with a splash */
 .is-preview .claim-btn { display: none; }
+
+/* =========================================================
+   More options (v3). Defaults keep the Classic look unchanged.
+   ========================================================= */
+
+/* Card padding (default 28px, same as before) */
+.card { padding: var(--card-pad, 28px) calc(var(--card-pad, 28px) - 2px) calc(var(--card-pad, 28px) - 6px); }
+.banner { margin: calc(var(--card-pad, 28px) * -1) calc((var(--card-pad, 28px) - 2px) * -1) 0; }
+/* Smooth tilt is eased in JS, so no CSS transition fighting it */
+.card.tilting { transition: none; will-change: transform; }
+.card-glare { opacity: .7; transition: opacity .4s; }
+.card.lit .card-glare { opacity: 1; }
+.no-shine .card-glare { display: none; }
+
+/* Vertical position */
+.pos-top .app { justify-content: flex-start; padding-top: 72px; }
+
+/* Badges: uploaded icons, glow, keyboard tooltips */
+.badge img { width: 18px; height: 18px; object-fit: contain; }
+.badge.glow { box-shadow: 0 0 14px color-mix(in srgb, var(--badge, var(--accent)) 45%, transparent); border-color: color-mix(in srgb, var(--badge, var(--accent)) 40%, transparent); }
+.badge.glow svg, .badge.glow img { filter: drop-shadow(0 0 5px var(--badge, var(--accent))); }
+[data-tip]:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+.badge:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: 2px; }
+
+/* Username: shimmer (a light sweep across the name) */
+.fx-shimmer {
+  background: linear-gradient(110deg, var(--text) 35%, #fff 48%, var(--accent) 52%, var(--text) 65%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: shimmer 3.2s ease-in-out infinite;
+}
+@keyframes shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+
+/* Bio text effects */
+.bio-glow .bio { text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 80%, transparent); }
+.bio-shimmer #bio-text {
+  background: linear-gradient(110deg, #d4d4d8 35%, #fff 50%, #d4d4d8 65%); background-size: 250% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 3.6s ease-in-out infinite;
+}
+
+/* Hover animations on links and icons ("classic" = the original behaviour) */
+.hover-lift .social:hover { transform: translateY(-4px); color: var(--icon-color); filter: none; }
+.hover-lift .link-btn:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.35); }
+.hover-glow .social:hover { transform: none; filter: drop-shadow(0 0 10px var(--accent)); }
+.hover-glow .link-btn:hover { transform: none; box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 40%, transparent); border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
+.hover-none .social:hover, .hover-none .link-btn:hover { transform: none; filter: none; box-shadow: none; }
+.hover-none .social:hover { color: var(--icon-color); }
+.link-btn { transition: background .25s, transform .25s cubic-bezier(.2,.8,.2,1), border-color .25s, box-shadow .25s; }
+.social { transition: transform .25s cubic-bezier(.2,.8,.2,1), color .2s, filter .25s; }
+
+@media (max-width: 480px) {
+  .card { padding: calc(var(--card-pad, 28px) - 6px) calc(var(--card-pad, 28px) - 10px) calc(var(--card-pad, 28px) - 10px); }
+  .banner { margin: calc((var(--card-pad, 28px) - 6px) * -1) calc((var(--card-pad, 28px) - 10px) * -1) 0; }
+}

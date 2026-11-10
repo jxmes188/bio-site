@@ -15,6 +15,8 @@ const auth = require("./auth");
 const { defaultProfile, sanitizeProfile, BADGE_ICONS } = require("./profile");
 const mail = require("./mail");
 const { applyPlan, featureInfo } = require("./features");
+const { realTypeMatches, cleanSvg } = require("./files");
+const mountOAuth = require("./oauth");
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, "..", "public");
@@ -41,6 +43,8 @@ app.disable("x-powered-by");
 
 // ---------- Security headers ----------
 app.use((req, res, next) => {
+  // Live site (https): browsers must always use https, and any stray http:// asset is upgraded
+  if (req.secure) res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   res.set({
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -55,7 +59,8 @@ app.use((req, res, next) => {
       "connect-src 'self' https://api.lanyard.rest wss://api.lanyard.rest",
       "frame-ancestors 'self'",
       "base-uri 'none'",
-      "form-action 'self'"
+      "form-action 'self'",
+      ...(req.secure ? ["upgrade-insecure-requests"] : [])
     ].join("; ")
   });
   next();
@@ -84,7 +89,9 @@ function resolveBadges(json) {
   try { ids = JSON.parse(json || "[]"); } catch {}
   if (!Array.isArray(ids) || !ids.length) return [];
   const all = db.prepare("SELECT * FROM badges ORDER BY sort, id").all();
-  return all.filter(b => ids.includes(b.id) && BADGE_ICONS.includes(b.icon)).map(b => ({ id: b.id, icon: b.icon, label: b.name, color: b.color }));
+  return all.filter(b => ids.includes(b.id) && (b.image || BADGE_ICONS.includes(b.icon))).map(b => ({
+    id: b.id, icon: b.icon, image: b.image || "", label: b.name, tip: b.description || b.name, color: b.color, glow: !!b.glow
+  }));
 }
 
 const getUserByName = name => db.prepare("SELECT * FROM users WHERE username = ?").get(String(name).toLowerCase());
@@ -141,15 +148,21 @@ async function sendCode(req, pending) {
   await mail.sendCode(pending.email, pending.username, code, siteHost(req));
 }
 
+function deleteUserCompletely(u) {
+  db.prepare("DELETE FROM users WHERE id = ?").run(u.id);   // sessions, files rows etc. cascade
+  db.prepare("DELETE FROM view_log WHERE user_id = ?").run(u.id);
+  db.prepare("DELETE FROM click_log WHERE user_id = ?").run(u.id);
+  fs.rmSync(path.join(UPLOAD_DIR, String(u.id)), { recursive: true, force: true });
+}
+
 // Hourly tidy-up: old unconfirmed accounts, expired codes, old logs
 function cleanup() {
   const cutoff = Date.now() - VERIFY_HOURS * 3600e3;
-  for (const u of db.prepare("SELECT id FROM users WHERE email_verified = 0 AND created_at < ?").all(cutoff)) {
-    db.prepare("DELETE FROM users WHERE id = ?").run(u.id);
-    fs.rmSync(path.join(UPLOAD_DIR, String(u.id)), { recursive: true, force: true });
-  }
+  for (const u of db.prepare("SELECT id FROM users WHERE email_verified = 0 AND created_at < ?").all(cutoff)) deleteUserCompletely(u);
   db.prepare("DELETE FROM pending_signups WHERE expires_at < ?").run(Date.now() - 3600e3);
   db.prepare("DELETE FROM signup_log WHERE created_at < ?").run(Date.now() - 864e5);
+  db.prepare("DELETE FROM oauth_pending WHERE expires_at < ?").run(Date.now());
+  db.prepare("DELETE FROM magic_logins WHERE expires_at < ?").run(Date.now());
 }
 cleanup();
 setInterval(cleanup, 3600e3).unref();
@@ -165,6 +178,9 @@ function meResponse(user) {
     defaults: defaultProfile(user.username),
     prefs: readPrefs(user),
     features: featureInfo(user.plan),
+    hasPassword: !!user.pass_hash,
+    linked: { google: !!user.google_id, discord: !!user.discord_id },
+    providers: mountOAuth.providerStatus(),
     createdAt: user.created_at,
     files: listFiles(user.id).map(f => ({ id: f.id, kind: f.kind, url: fileUrl(f), name: f.original_name, size: f.size })),
     quota: QUOTA_BYTES
@@ -173,6 +189,12 @@ function meResponse(user) {
 
 const authLimiter = auth.rateLimit({ windowMs: 15 * 60e3, max: 20 });
 const codeLimiter = auth.rateLimit({ windowMs: 15 * 60e3, max: 30 });
+// Sign-in emails: per connection, and per address so nobody can flood someone's inbox
+const magicLimiter = auth.rateLimit({ windowMs: 15 * 60e3, max: 6, message: "Too many sign-in emails. Try again in 15 minutes." });
+const magicEmailLimiter = auth.rateLimit({ windowMs: 60 * 60e3, max: 5, key: req => String((req.body || {}).email || "").trim().toLowerCase(), message: "Too many sign-in emails for this address. Try again in an hour." });
+const uploadLimiter = auth.rateLimit({ windowMs: 10 * 60e3, max: 40, message: "Too many uploads. Wait a few minutes and try again." });
+
+app.get("/api/auth/providers", (_req, res) => res.json(mountOAuth.providerStatus()));
 
 // ---------- Auth API ----------
 app.get("/api/check/:username", (req, res) => {
@@ -338,6 +360,60 @@ app.post("/api/login", authLimiter, (req, res) => {
   if (!user || !auth.verifyPassword(password, user.pass_hash))
     return res.status(401).json({ error: "Wrong username/email or password" });
   if (user.banned) return res.status(403).json({ error: "This account has been suspended." });
+  if (auth.needsRehash(user.pass_hash)) db.prepare("UPDATE users SET pass_hash = ? WHERE id = ?").run(auth.hashPassword(password), user.id);
+  auth.createSession(res, user.id, req.secure);
+  res.json({ ok: true, username: user.username });
+});
+
+// ---------- Sign in with an emailed code or one-click link ----------
+// Always answers the same way, so nobody can use it to find out which emails have accounts.
+const baseUrl = req => SITE_URL || `${req.protocol}://${req.get("host")}`;
+app.post("/api/login/magic", magicLimiter, magicEmailLimiter, async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200)
+    return res.status(400).json({ error: "Enter a valid email", field: "email" });
+  const id = crypto.randomBytes(16).toString("hex");
+  const user = db.prepare("SELECT * FROM users WHERE email = ? AND email_verified = 1 AND banned = 0").get(email);
+  if (user) {
+    // Sent less than a minute ago: quietly don't send again. (An error here would reveal that
+    // the email has an account; the page already makes people wait 60s before "Resend".)
+    const last = db.prepare("SELECT id, sent_at FROM magic_logins WHERE user_id = ? ORDER BY sent_at DESC LIMIT 1").get(user.id);
+    if (last && last.sent_at + RESEND_COOLDOWN_MS > Date.now()) return res.json({ ok: true, id: last.id });
+    const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
+    const token = crypto.randomBytes(24).toString("hex");
+    db.prepare("DELETE FROM magic_logins WHERE user_id = ?").run(user.id);
+    db.prepare("INSERT INTO magic_logins (id, user_id, code_hash, link_hash, attempts, sent_at, expires_at, created_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)")
+      .run(id, user.id, hashCode(id, code), auth.sha256(token), Date.now(), Date.now() + CODE_MINUTES * 60e3, Date.now());
+    try { await mail.sendMagic(user.email, user.username, code, `${baseUrl(req)}/login?magic=${id}.${token}`, siteHost(req)); }
+    catch (err) {
+      console.error("Sign-in email failed:", err.message);
+      db.prepare("DELETE FROM magic_logins WHERE id = ?").run(id);
+      return res.status(502).json({ error: "Couldn't send the email. Try again in a minute." });
+    }
+  }
+  res.json({ ok: true, id });
+});
+
+app.post("/api/login/magic/verify", codeLimiter, (req, res) => {
+  // Either { id, code } typed by the user, or { link: "id.token" } from the email button
+  let id = String(req.body.id || ""), secret = String(req.body.code || "").replace(/\D/g, "");
+  const byLink = !!req.body.link;
+  if (byLink) [id, secret] = String(req.body.link).split(".");
+  const m = db.prepare("SELECT * FROM magic_logins WHERE id = ?").get(String(id || ""));
+  if (!m || m.expires_at < Date.now()) return res.status(400).json({ error: "This code or link has expired. Ask for a new one.", expired: true });
+  if (m.attempts >= CODE_MAX_TRIES) return res.status(400).json({ error: "Too many wrong codes. Ask for a new one.", expired: true });
+  const want = byLink ? m.link_hash : m.code_hash;
+  const got = byLink ? auth.sha256(String(secret || "")) : (secret.length === 6 ? hashCode(m.id, secret) : "");
+  const ok = got.length === want.length && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(want));
+  if (!ok) {
+    db.prepare("UPDATE magic_logins SET attempts = attempts + 1 WHERE id = ?").run(m.id);
+    const left = CODE_MAX_TRIES - m.attempts - 1;
+    return res.status(400).json({ error: byLink ? "This link isn't valid any more. Ask for a new one." : left > 0 ? `Wrong code. ${left} ${left === 1 ? "try" : "tries"} left.` : "Wrong code. Ask for a new one." });
+  }
+  db.prepare("DELETE FROM magic_logins WHERE id = ?").run(m.id); // works once
+  const user = getUserById(m.user_id);
+  if (!user || !user.email_verified) return res.status(400).json({ error: "This account no longer exists." });
+  if (user.banned) return res.status(403).json({ error: "This account has been suspended." });
   auth.createSession(res, user.id, req.secure);
   res.json({ ok: true, username: user.username });
 });
@@ -348,6 +424,8 @@ app.post("/api/logout", (req, res) => {
 });
 
 // ---------- Account / profile API ----------
+// Who's signed in (never a 401, so the homepage can ask quietly)
+app.get("/api/session", (req, res) => res.json({ user: req.user ? { username: req.user.username } : null }));
 app.get("/api/me", auth.requireUser, (req, res) => res.json(meResponse(getUserById(req.user.id))));
 
 const saveLimiter = auth.rateLimit({ windowMs: 60e3, max: 120 }); // autosave-friendly, but not unlimited
@@ -370,13 +448,14 @@ app.put("/api/me/prefs", auth.requireUser, saveLimiter, (req, res) => {
 // Delete your own account (needs your password)
 app.delete("/api/me", auth.requireUser, authLimiter, (req, res) => {
   const user = getUserById(req.user.id);
-  if (!auth.verifyPassword(String((req.body || {}).password || ""), user.pass_hash))
-    return res.status(400).json({ error: "Password is wrong" });
+  const b = req.body || {};
+  // Accounts without a password (Google / Discord only) confirm by typing their username
+  const confirmed = user.pass_hash
+    ? auth.verifyPassword(String(b.password || ""), user.pass_hash)
+    : String(b.confirm || "").trim().toLowerCase() === user.username;
+  if (!confirmed) return res.status(400).json({ error: user.pass_hash ? "Password is wrong" : "Type your username to confirm" });
   if (ADMINS.has(user.username)) return res.status(400).json({ error: "Admin accounts can't be deleted from here" });
-  db.prepare("DELETE FROM users WHERE id = ?").run(user.id);
-  db.prepare("DELETE FROM view_log WHERE user_id = ?").run(user.id);
-  db.prepare("DELETE FROM click_log WHERE user_id = ?").run(user.id);
-  fs.rmSync(path.join(UPLOAD_DIR, String(user.id)), { recursive: true, force: true });
+  deleteUserCompletely(user);
   auth.destroySession(req, res);
   res.json({ ok: true });
 });
@@ -410,7 +489,8 @@ app.get("/api/me/analytics", auth.requireUser, (req, res) => {
 app.post("/api/me/password", auth.requireUser, authLimiter, (req, res) => {
   const user = getUserById(req.user.id);
   const { current, next } = req.body || {};
-  if (!auth.verifyPassword(String(current || ""), user.pass_hash)) return res.status(400).json({ error: "Current password is wrong" });
+  // No password yet (signed up with Google / Discord): they can set one without an old one
+  if (user.pass_hash && !auth.verifyPassword(String(current || ""), user.pass_hash)) return res.status(400).json({ error: "Current password is wrong" });
   if (typeof next !== "string" || next.length < 8 || next.length > 200) return res.status(400).json({ error: "New password must be at least 8 characters" });
   db.prepare("UPDATE users SET pass_hash = ? WHERE id = ?").run(auth.hashPassword(next), user.id);
   res.json({ ok: true });
@@ -421,36 +501,13 @@ const IMG = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
 const VID = [".mp4", ".webm"];
 const AUD = [".mp3", ".ogg", ".wav", ".m4a"];
 const KINDS = {
-  avatar:     { maxMB: 5,  exts: IMG,              single: true },
-  banner:     { maxMB: 8,  exts: IMG,              single: true },
-  background: { maxMB: 30, exts: [...IMG, ...VID], single: true },
-  cursor:     { maxMB: 1,  exts: [".png", ".gif", ".webp"], single: true },
-  music:      { maxMB: 20, exts: AUD,              single: false, maxCount: 10 }
+  avatar:     { maxKB: 5 * 1024,  exts: IMG,              single: true },
+  banner:     { maxKB: 8 * 1024,  exts: IMG,              single: true },
+  background: { maxKB: 30 * 1024, exts: [...IMG, ...VID], single: true },
+  // .cur/.ico often arrive as application/octet-stream; their first bytes are checked after upload
+  cursor:     { maxKB: 256,       exts: [".png", ".svg", ".ico", ".cur"], single: true, anyMime: true },
+  music:      { maxKB: 20 * 1024, exts: AUD,              single: false, maxCount: 10 }
 };
-
-/** Check the file's first bytes really match its extension (stops renamed files). */
-function realTypeMatches(filePath, ext) {
-  let b;
-  try {
-    const fd = fs.openSync(filePath, "r");
-    b = Buffer.alloc(16);
-    fs.readSync(fd, b, 0, 16, 0);
-    fs.closeSync(fd);
-  } catch { return false; }
-  const ascii = (s, e) => b.toString("latin1", s, e);
-  switch (ext) {
-    case ".png": return b[0] === 0x89 && ascii(1, 4) === "PNG";
-    case ".jpg": case ".jpeg": return b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
-    case ".gif": return ascii(0, 4) === "GIF8";
-    case ".webp": return ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP";
-    case ".mp4": case ".m4a": return ascii(4, 8) === "ftyp";
-    case ".webm": return b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3;
-    case ".mp3": return ascii(0, 3) === "ID3" || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0);
-    case ".ogg": return ascii(0, 4) === "OggS";
-    case ".wav": return ascii(0, 4) === "RIFF" && ascii(8, 12) === "WAVE";
-    default: return false;
-  }
-}
 
 const uploaders = Object.fromEntries(Object.entries(KINDS).map(([kind, k]) => [kind, multer({
   storage: multer.diskStorage({
@@ -461,10 +518,10 @@ const uploaders = Object.fromEntries(Object.entries(KINDS).map(([kind, k]) => [k
     },
     filename: (_r, file, cb) => cb(null, crypto.randomBytes(12).toString("hex") + path.extname(file.originalname).toLowerCase())
   }),
-  limits: { fileSize: k.maxMB * 1024 * 1024, files: 1 },
+  limits: { fileSize: k.maxKB * 1024, files: 1 },
   fileFilter: (_r, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    const okMime = /^(image|video|audio)\//.test(file.mimetype);
+    const okMime = k.anyMime || /^(image|video|audio)\//.test(file.mimetype);
     if (k.exts.includes(ext) && okMime) cb(null, true);
     else cb(Object.assign(new Error(`Allowed file types: ${k.exts.join(", ")}`), { status: 400 }));
   }
@@ -475,7 +532,7 @@ function removeFile(f) {
   fs.promises.unlink(path.join(UPLOAD_DIR, String(f.user_id), f.filename)).catch(() => {});
 }
 
-app.post("/api/me/upload/:kind", auth.requireUser, (req, res, next) => {
+app.post("/api/me/upload/:kind", auth.requireUser, uploadLimiter, (req, res, next) => {
   const kind = req.params.kind;
   const k = KINDS[kind];
   if (!k) return res.status(400).json({ error: "Unknown upload type" });
@@ -488,6 +545,16 @@ app.post("/api/me/upload/:kind", auth.requireUser, (req, res, next) => {
     if (!realTypeMatches(req.file.path, path.extname(req.file.filename))) {
       fs.promises.unlink(req.file.path).catch(() => {});
       return res.status(400).json({ error: "That file isn't really the type its name says. Try exporting it again." });
+    }
+    // SVGs must be plain drawings: anything that could run code gets the file rejected
+    if (path.extname(req.file.filename) === ".svg") {
+      const clean = cleanSvg(fs.readFileSync(req.file.path, "utf8"));
+      if (!clean) {
+        fs.promises.unlink(req.file.path).catch(() => {});
+        return res.status(400).json({ error: "That SVG has scripts, links or styles in it. Use a plain SVG drawing, or a PNG." });
+      }
+      fs.writeFileSync(req.file.path, clean);
+      req.file.size = Buffer.byteLength(clean);
     }
 
     const userId = req.user.id;
@@ -513,7 +580,7 @@ app.post("/api/me/upload/:kind", auth.requireUser, (req, res, next) => {
     const url = fileUrl(file);
     if (kind === "avatar") profile.avatar = url;
     if (kind === "banner") profile.banner = url;
-    if (kind === "cursor") profile.cursor.image = url;
+    if (kind === "cursor") { profile.cursor.image = url; profile.cursor.style = "upload"; }
     if (kind === "background") {
       profile.background.url = url;
       profile.background.type = VID.includes(path.extname(file.filename)) ? "video" : "image";
@@ -581,10 +648,14 @@ app.post("/api/track/click", trackLimiter, (req, res) => {
   res.status(204).end();
 });
 
+// ---------- Sign in with Google / Discord ----------
+mountOAuth(app, { db, auth, SITE_URL, VIEW_SECRET, SIGNUPS_PER_IP_PER_DAY, usernameProblem, defaultProfile, deleteUserCompletely });
+
 // ---------- Admin ----------
 require("./admin-panel")(app, {
   db, auth, ADMINS, PUBLIC, UPLOAD_DIR, USERNAME_RE, RESERVED,
-  getUserById, readProfile, saveProfile, defaultProfile, sanitizeProfile, ownFileSet, listFiles, fileUrl, removeFile, resolveBadges
+  getUserById, readProfile, saveProfile, defaultProfile, sanitizeProfile, ownFileSet, listFiles, fileUrl, removeFile, resolveBadges,
+  deleteUserCompletely, realTypeMatches, cleanSvg
 });
 
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
@@ -592,7 +663,13 @@ app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
 // ---------- Pages ----------
 // The homepage always shows sign in / sign up (signed-in visitors also get a "Go to dashboard" bar)
 app.get("/", (_req, res) => res.sendFile(path.join(PUBLIC, "index.html")));
-app.get("/dashboard", (req, res) => (req.user ? res.sendFile(path.join(PUBLIC, "dashboard.html")) : res.redirect("/")));
+// Sign in / sign up page. Signed-in visitors go straight to their dashboard
+// (unless they're finishing a Google/Discord sign-up or opening an emailed link).
+app.get(["/login", "/signup"], (req, res) => {
+  if (req.user && !req.query.claim && !req.query.magic) return res.redirect("/dashboard");
+  res.sendFile(path.join(PUBLIC, "login.html"));
+});
+app.get("/dashboard", (req, res) => (req.user ? res.sendFile(path.join(PUBLIC, "dashboard.html")) : res.redirect("/login")));
 
 app.get("/:username", (req, res, next) => {
   const name = req.params.username;

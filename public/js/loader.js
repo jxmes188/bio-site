@@ -31,7 +31,7 @@
       data = await res.json();
     }
   } catch (_) {
-    document.body.innerHTML = '<p style="color:#fff;font-family:sans-serif;text-align:center;margin-top:40vh">Profile not found. <a style="color:#a855f7" href="/">Go home</a></p>';
+    document.body.innerHTML = '<p style="color:#fff;font-family:sans-serif;text-align:center;margin-top:40vh">Profile not found. <a style="color:#fff" href="/">Go home</a></p>';
     return;
   }
 
@@ -64,7 +64,7 @@
 
   if (preview) document.getElementById("claim-btn").hidden = true;
 
-  for (const src of ["/js/background.js", "/js/cursor.js", "/js/profile.js", "/js/discord.js"]) {
+  for (const src of ["/js/background.js", "/js/trails.js", "/js/cursor.js", "/js/profile.js", "/js/discord.js"]) {
     await new Promise((resolve, reject) => {
       const s = document.createElement("script");
       s.src = src;

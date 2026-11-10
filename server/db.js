@@ -172,8 +172,48 @@ if (db.prepare("SELECT COUNT(*) n FROM badges").get().n === 0) {
   }
 }
 
+// ---------- Sign in with Google / Discord ----------
+// Linked accounts. NULL = not linked. Accounts made with Google/Discord can have an empty pass_hash.
+if (!userCols.includes("google_id")) db.exec("ALTER TABLE users ADD COLUMN google_id TEXT");
+if (!userCols.includes("discord_id")) db.exec("ALTER TABLE users ADD COLUMN discord_id TEXT");
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google ON users(google_id) WHERE google_id IS NOT NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_discord ON users(discord_id) WHERE discord_id IS NOT NULL;
+
+  -- Someone signed in with Google/Discord for the first time and still has to pick a username
+  CREATE TABLE IF NOT EXISTS oauth_pending (
+    id          TEXT PRIMARY KEY,
+    provider    TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    email       TEXT NOT NULL,
+    name        TEXT NOT NULL DEFAULT '',
+    ip_hash     TEXT NOT NULL,
+    expires_at  INTEGER NOT NULL
+  );
+
+  -- "Email me a sign-in code / link"
+  CREATE TABLE IF NOT EXISTS magic_logins (
+    id          TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash   TEXT NOT NULL,
+    link_hash   TEXT NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    sent_at     INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+`);
+
+// ---------- Badges: hover text, glow, uploaded icon ----------
+const badgeCols = db.prepare("PRAGMA table_info(badges)").all().map(c => c.name);
+if (!badgeCols.includes("description")) db.exec("ALTER TABLE badges ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+if (!badgeCols.includes("glow")) db.exec("ALTER TABLE badges ADD COLUMN glow INTEGER NOT NULL DEFAULT 0");
+if (!badgeCols.includes("image")) db.exec("ALTER TABLE badges ADD COLUMN image TEXT NOT NULL DEFAULT ''");
+
 // Clear expired sessions on start
 db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(Date.now());
 db.prepare("DELETE FROM admin_sessions WHERE expires_at < ?").run(Date.now());
+db.prepare("DELETE FROM oauth_pending WHERE expires_at < ?").run(Date.now());
+db.prepare("DELETE FROM magic_logins WHERE expires_at < ?").run(Date.now());
 
 module.exports = { db, DATA_DIR };

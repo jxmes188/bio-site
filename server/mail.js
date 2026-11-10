@@ -29,14 +29,14 @@ function sendCode(to, username, code, siteName) {
     `Type it on the sign-up page. It expires in 15 minutes.\n` +
     `If you didn't try to sign up, you can ignore this email. No account is created without the code.`;
   const html = `
-  <div style="font-family:Arial,Helvetica,sans-serif;background:#07070b;padding:32px 16px">
-    <div style="max-width:440px;margin:0 auto;background:#101017;border:1px solid #2a2a35;border-radius:14px;padding:28px;color:#f4f4f5">
+  <div style="font-family:Arial,Helvetica,sans-serif;background:#000000;padding:32px 16px">
+    <div style="max-width:440px;margin:0 auto;background:#0a0a0a;border:1px solid #262626;border-radius:14px;padding:28px;color:#fafafa">
       <h1 style="font-size:20px;margin:0 0 12px">Your sign-up code</h1>
-      <p style="color:#a1a1aa;line-height:1.5;margin:0 0 20px">
-        Type this code on the sign-up page to claim <b style="color:#f4f4f5">${esc(siteName)}/${esc(username)}</b>.
+      <p style="color:#a3a3a3;line-height:1.5;margin:0 0 20px">
+        Type this code on the sign-up page to claim <b style="color:#fafafa">${esc(siteName)}/${esc(username)}</b>.
       </p>
-      <div style="font-size:34px;font-weight:bold;letter-spacing:10px;text-align:center;background:#16161f;border:1px solid #2a2a35;border-radius:12px;padding:16px 0;color:#ffffff">${esc(code)}</div>
-      <p style="color:#71717a;font-size:12px;line-height:1.5;margin:22px 0 0">
+      <div style="font-size:34px;font-weight:bold;letter-spacing:10px;text-align:center;background:#141414;border:1px solid #262626;border-radius:12px;padding:16px 0;color:#ffffff">${esc(code)}</div>
+      <p style="color:#737373;font-size:12px;line-height:1.5;margin:22px 0 0">
         This code expires in 15 minutes. If you didn't try to sign up, ignore this email. No account is created without the code.
       </p>
     </div>
@@ -50,14 +50,14 @@ function sendResetCode(to, username, code, siteName) {
     `Someone asked to reset the password for ${siteName}/${username}.\n\n` +
     `Your code is: ${code}\n\nIt expires in 15 minutes. If this wasn't you, ignore this email and your password stays the same.`;
   const html = `
-  <div style="font-family:Arial,Helvetica,sans-serif;background:#07070b;padding:32px 16px">
-    <div style="max-width:440px;margin:0 auto;background:#101017;border:1px solid #2a2a35;border-radius:14px;padding:28px;color:#f4f4f5">
+  <div style="font-family:Arial,Helvetica,sans-serif;background:#000000;padding:32px 16px">
+    <div style="max-width:440px;margin:0 auto;background:#0a0a0a;border:1px solid #262626;border-radius:14px;padding:28px;color:#fafafa">
       <h1 style="font-size:20px;margin:0 0 12px">Reset your password</h1>
-      <p style="color:#a1a1aa;line-height:1.5;margin:0 0 20px">
-        Type this code on the sign-in page to choose a new password for <b style="color:#f4f4f5">${esc(siteName)}/${esc(username)}</b>.
+      <p style="color:#a3a3a3;line-height:1.5;margin:0 0 20px">
+        Type this code on the sign-in page to choose a new password for <b style="color:#fafafa">${esc(siteName)}/${esc(username)}</b>.
       </p>
-      <div style="font-size:34px;font-weight:bold;letter-spacing:10px;text-align:center;background:#16161f;border:1px solid #2a2a35;border-radius:12px;padding:16px 0;color:#ffffff">${esc(code)}</div>
-      <p style="color:#71717a;font-size:12px;line-height:1.5;margin:22px 0 0">
+      <div style="font-size:34px;font-weight:bold;letter-spacing:10px;text-align:center;background:#141414;border:1px solid #262626;border-radius:12px;padding:16px 0;color:#ffffff">${esc(code)}</div>
+      <p style="color:#737373;font-size:12px;line-height:1.5;margin:22px 0 0">
         This code expires in 15 minutes. If you didn't ask for this, ignore this email and your password stays the same.
       </p>
     </div>
@@ -65,4 +65,29 @@ function sendResetCode(to, username, code, siteName) {
   return sendMail({ to, subject, html, text });
 }
 
-module.exports = { sendMail, sendCode, sendResetCode };
+function sendMagic(to, username, code, link, siteName) {
+  const subject = `${code} is your ${siteName} sign-in code`;
+  const text =
+    `Sign in to ${siteName}/${username}\n\n` +
+    `Your code is: ${code}\n\nOr open this link on the same device:\n${link}\n\n` +
+    `Both expire in 15 minutes and work once. If you didn't ask for this, ignore this email.`;
+  const html = `
+  <div style="font-family:Arial,Helvetica,sans-serif;background:#000000;padding:32px 16px">
+    <div style="max-width:440px;margin:0 auto;background:#0a0a0a;border:1px solid #262626;border-radius:14px;padding:28px;color:#fafafa">
+      <h1 style="font-size:20px;margin:0 0 12px">Sign in</h1>
+      <p style="color:#a3a3a3;line-height:1.5;margin:0 0 20px">
+        Use this code to sign in to <b style="color:#fafafa">${esc(siteName)}/${esc(username)}</b>.
+      </p>
+      <div style="font-size:34px;font-weight:bold;letter-spacing:10px;text-align:center;background:#141414;border:1px solid #262626;border-radius:12px;padding:16px 0;color:#ffffff">${esc(code)}</div>
+      <p style="text-align:center;margin:22px 0 0">
+        <a href="${esc(link)}" style="display:inline-block;background:#fafafa;color:#0a0a0a;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:10px">Sign in with one click</a>
+      </p>
+      <p style="color:#737373;font-size:12px;line-height:1.5;margin:22px 0 0">
+        The code and link expire in 15 minutes and work once. If you didn't ask for this, ignore this email.
+      </p>
+    </div>
+  </div>`;
+  return sendMail({ to, subject, html, text });
+}
+
+module.exports = { sendMail, sendCode, sendResetCode, sendMagic };

@@ -36,7 +36,8 @@
   const vars = {
     "--accent": T.accent,
     "--accent2": T.accent2,
-    "--card-bg": `rgba(12,12,18,${T.cardOpacity})`,
+    "--card-bg": rgba(T.cardColor || "#0c0c12", T.cardOpacity),
+    "--card-pad": (T.cardPadding ?? 28) + "px",
     "--blur": T.blur + "px",
     "--font": font[0],
     "--text": T.textColor,
@@ -51,7 +52,7 @@
     "--bg-dim": C.background.dim || 0,
     "--name-font": nameFont ? nameFont[0] : "inherit",
     "--card-border-w": (T.cardBorder ?? 1) + "px",
-    "--card-border-c": `rgba(255,255,255,${T.cardBorderOpacity ?? 0.1})`,
+    "--card-border-c": rgba(T.borderColor || "#ffffff", T.cardBorderOpacity ?? 0.1),
     "--btn-radius": (T.buttonRadius ?? 12) + "px",
     "--splash-blur": ((C.splash && C.splash.blur) ?? 20) + "px"
   };
@@ -63,9 +64,19 @@
   document.body.classList.add(
     "layout-" + (T.layout || "card"), "align-" + (T.align || "center"),
     "icons-" + (T.iconStyle || "plain"), "buttons-" + (T.buttonStyle || "glass"),
-    "enter-" + ((C.effects && C.effects.entrance) || "fade"), "player-" + (M0.player || "full")
+    "enter-" + ((C.effects && C.effects.entrance) || "fade"), "player-" + (M0.player || "full"),
+    "hover-" + (T.hover || "classic"), "pos-" + (T.position || "center"), "bio-" + (T.bioEffect || "none")
   );
+  if (T.shine === false) document.body.classList.add("no-shine");
   if (C.preview) document.body.classList.add("is-preview");
+
+  // Order of the blocks under the name (presence, socials, links, player)
+  const BLOCK_IDS = { presence: "presence", socials: "socials", links: "links", player: "player" };
+  for (const b of T.order || []) if (BLOCK_IDS[b]) $("card").appendChild($(BLOCK_IDS[b]));
+
+  // Show / hide
+  if (T.showAvatar === false) document.querySelector(".avatar-wrap").hidden = true;
+  if (T.showStatus === false) $("status-dot").hidden = true;
 
   // ---------- Profile ----------
   $("avatar").src = C.avatar;
@@ -82,9 +93,13 @@
 
   // Badges
   if (C.badges.length && T.showBadges !== false) {
-    $("badges").innerHTML = C.badges.map(b =>
-      `<span class="badge" data-tip="${esc(b.label)}"${/^#[0-9a-f]{6}$/i.test(b.color || "") ? ` style="color:${b.color}"` : ""}>${ICONS[b.icon] || ""}</span>`
-    ).join("");
+    // Icon: an uploaded picture (from the admin panel) or one of the built-in icons
+    $("badges").innerHTML = C.badges.map(b => {
+      const col = /^#[0-9a-f]{6}$/i.test(b.color || "") ? b.color : "";
+      const style = col ? ` style="color:${col};--badge:${col}"` : "";
+      const img = /^\/uploads\/badges\/[a-f0-9]{24}\.(png|svg|ico)$/.test(b.image || "") ? `<img src="${b.image}" alt="" />` : (ICONS[b.icon] || "");
+      return `<span class="badge${b.glow ? " glow" : ""}" tabindex="0" data-tip="${esc(b.tip || b.label)}" aria-label="${esc(b.label)}"${style}>${img}</span>`;
+    }).join("");
   } else $("badges").hidden = true;
 
   // Socials
@@ -185,19 +200,33 @@
   }
 
   // ---------- 3D tilt ----------
+  // Follows the mouse smoothly (eased every frame), springs back when the mouse leaves.
+  // Off on touch screens and for "reduce motion".
   const card = $("card");
-  if (C.theme.tilt && !matchMedia("(pointer: coarse)").matches) {
-    addEventListener("mousemove", e => {
+  if (C.theme.tilt && !matchMedia("(hover: none), (pointer: coarse)").matches && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const deg = T.tiltStrength || 10;
+    let tx = 0, ty = 0, x = 0, y = 0, raf = 0;
+    card.classList.add("tilting");
+    const step = () => {
+      x += (tx - x) * 0.12; y += (ty - y) * 0.12;
+      card.style.transform = `perspective(1000px) rotateY(${(x * deg).toFixed(2)}deg) rotateX(${(-y * deg).toFixed(2)}deg)`;
+      card.style.setProperty("--gx", ((x + 1) * 50).toFixed(1) + "%");
+      card.style.setProperty("--gy", ((y + 1) * 50).toFixed(1) + "%");
+      raf = Math.abs(tx - x) + Math.abs(ty - y) > 0.001 ? requestAnimationFrame(step) : 0;
+    };
+    addEventListener("pointermove", e => {
+      if (e.pointerType !== "mouse") return;
       const r = card.getBoundingClientRect();
-      const x = (e.clientX - (r.left + r.width / 2)) / r.width;
-      const y = (e.clientY - (r.top + r.height / 2)) / r.height;
-      const cx = Math.max(-1, Math.min(1, x)), cy = Math.max(-1, Math.min(1, y));
-      const deg = T.tiltStrength || 10;
-      card.style.transform = `perspective(1000px) rotateY(${cx * deg}deg) rotateX(${-cy * deg}deg)`;
-      card.style.setProperty("--gx", (cx + 1) * 50 + "%");
-      card.style.setProperty("--gy", (cy + 1) * 50 + "%");
+      tx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / r.width));
+      ty = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / r.height));
+      card.classList.add("lit");
+      if (!raf) raf = requestAnimationFrame(step);
+    }, { passive: true });
+    document.addEventListener("pointerleave", () => {
+      tx = ty = 0;
+      card.classList.remove("lit");
+      if (!raf) raf = requestAnimationFrame(step);
     });
-    document.addEventListener("mouseleave", () => card.style.transform = "");
   }
 
   // ---------- Music player ----------

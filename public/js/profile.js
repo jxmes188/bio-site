@@ -19,13 +19,17 @@
     "outfit":         ['"Outfit", system-ui, sans-serif', "Outfit:wght@400;500;600;700;800"],
     "space-grotesk":  ['"Space Grotesk", system-ui, sans-serif', "Space+Grotesk:wght@400;500;600;700"],
     "jetbrains-mono": ['"JetBrains Mono", ui-monospace, monospace', "JetBrains+Mono:wght@400;600;800"],
-    "press-start":    ['"Press Start 2P", ui-monospace, monospace', "Press+Start+2P"]
+    "press-start":    ['"Press Start 2P", ui-monospace, monospace', "Press+Start+2P"],
+    "playfair":       ['"Playfair Display", Georgia, serif', "Playfair+Display:wght@400;600;700;800"],
+    "comfortaa":      ['"Comfortaa", system-ui, sans-serif', "Comfortaa:wght@400;600;700"]
   };
   const font = FONTS[T.font] || FONTS.inter;
-  if (T.font && T.font !== "inter") {
+  const nameFont = T.nameFont && T.nameFont !== "same" ? FONTS[T.nameFont] : null;
+  for (const f of new Set([T.font, nameFont ? T.nameFont : null])) {
+    if (!f || f === "inter" || !FONTS[f]) continue;
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = `https://fonts.googleapis.com/css2?family=${font[1]}&display=swap`;
+    link.href = `https://fonts.googleapis.com/css2?family=${FONTS[f][1]}&display=swap`;
     document.head.appendChild(link);
   }
   const ICON_COLORS = { white: "#e4e4e7", accent: T.accent, accent2: T.accent2 };
@@ -44,9 +48,24 @@
     "--name-size": T.nameSize + "rem",
     "--icon-size": T.iconSize + "px",
     "--icon-color": ICON_COLORS[T.iconColor] || ICON_COLORS.white,
-    "--bg-dim": C.background.dim || 0
+    "--bg-dim": C.background.dim || 0,
+    "--name-font": nameFont ? nameFont[0] : "inherit",
+    "--card-border-w": (T.cardBorder ?? 1) + "px",
+    "--card-border-c": `rgba(255,255,255,${T.cardBorderOpacity ?? 0.1})`,
+    "--btn-radius": (T.buttonRadius ?? 12) + "px",
+    "--splash-blur": ((C.splash && C.splash.blur) ?? 20) + "px"
   };
+  if (C.background.vignette === false) vars["--vignette"] = "linear-gradient(transparent, transparent)";
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+
+  // Layout / style switches as classes on <body>
+  const M0 = C.music || {};
+  document.body.classList.add(
+    "layout-" + (T.layout || "card"), "align-" + (T.align || "center"),
+    "icons-" + (T.iconStyle || "plain"), "buttons-" + (T.buttonStyle || "glass"),
+    "enter-" + ((C.effects && C.effects.entrance) || "fade"), "player-" + (M0.player || "full")
+  );
+  if (C.preview) document.body.classList.add("is-preview");
 
   // ---------- Profile ----------
   $("avatar").src = C.avatar;
@@ -62,7 +81,7 @@
   else $("banner").hidden = true;
 
   // Badges
-  if (C.badges.length) {
+  if (C.badges.length && T.showBadges !== false) {
     $("badges").innerHTML = C.badges.map(b =>
       `<span class="badge" data-tip="${esc(b.label)}"${/^#[0-9a-f]{6}$/i.test(b.color || "") ? ` style="color:${b.color}"` : ""}>${ICONS[b.icon] || ""}</span>`
     ).join("");
@@ -86,6 +105,16 @@
        </a>`
     ).join("");
   } else $("links").hidden = true;
+
+  // Count link clicks for the owner's analytics (not in the dashboard preview)
+  if (!C.preview) {
+    document.addEventListener("click", e => {
+      const a = e.target.closest(".social, .link-btn");
+      if (!a || !navigator.sendBeacon) return;
+      const t = a.getAttribute("href");
+      navigator.sendBeacon("/api/track/click", new Blob([JSON.stringify({ u: C.handle, t })], { type: "application/json" }));
+    });
+  }
 
   // Presence
   const discordOn = C.discord && C.discord.enabled && C.discord.userId;
@@ -207,7 +236,10 @@
   }
 
   if (!M.enabled || !M.tracks.length) $("player").hidden = true;
-  else loadTrack(0);
+  else {
+    loadTrack(0);
+    if (M.player === "hidden") $("player").hidden = true; // music still plays, just no player box
+  }
 
   audio.addEventListener("play", setPlaying);
   audio.addEventListener("pause", setPaused);

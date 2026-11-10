@@ -1,346 +1,110 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Dashboard</title>
   <link rel="icon" href="/img/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/app.css" />
   <link rel="stylesheet" href="/css/dashboard.css" />
 </head>
 <body>
-  <div class="glow-bg"></div>
+  <div class="dash" id="dash">
 
-  <header class="topbar">
-    <a class="brand" href="/dashboard"><img src="/img/favicon.svg" alt="" /><span class="site-name">bio</span></a>
-    <div class="my-link">
-      <a id="my-link" href="#" target="_blank" rel="noopener"></a>
-      <button class="btn btn-ghost btn-sm" id="copy-link">Copy</button>
-    </div>
-    <div class="topbar-right">
-      <span class="views-pill" title="Unique visitors"><svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg><span id="views">0</span></span>
-      <a class="btn btn-ghost btn-sm" id="admin-link" href="/admin" hidden>Admin</a>
-      <button class="btn btn-ghost btn-sm" id="logout">Sign out</button>
-    </div>
-  </header>
+    <!-- ===== Sidebar (desktop) ===== -->
+    <aside class="side">
+      <a class="side-brand" href="/dashboard"><img src="/img/favicon.svg" alt="" /><span class="site-name">bio</span></a>
+      <nav class="side-nav" id="side-nav" aria-label="Sections"></nav>
+      <div class="side-foot">
+        <a class="side-page" id="side-page" href="#" target="_blank" rel="noopener">
+          <img id="side-avatar" src="/img/avatar.svg" alt="" />
+          <span><b id="side-name"></b><small id="side-link"></small></span>
+        </a>
+        <div class="side-actions">
+          <button class="icon-btn" id="theme-toggle" title="Light / dark" aria-label="Switch light or dark dashboard">
+            <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.4A5.5 5.5 0 0 1 13.4 3.1 9 9 0 0 0 12 3z"/></svg>
+          </button>
+          <a class="icon-btn" id="admin-link" href="/admin" title="Admin" aria-label="Admin" hidden>
+            <svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5.2 3.4 9.9 8 11 4.6-1.1 8-5.8 8-11V5l-8-3z"/></svg>
+          </a>
+          <button class="icon-btn" id="logout" title="Sign out" aria-label="Sign out">
+            <svg viewBox="0 0 24 24"><path d="M10 4H5v16h5v-2H7V6h3V4zm6.6 3.6-1.4 1.4 2 2H9v2h8.2l-2 2 1.4 1.4L21 12l-4.4-4.4z"/></svg>
+          </button>
+        </div>
+      </div>
+    </aside>
 
-  <div class="layout">
-    <!-- ================= EDITOR ================= -->
-    <main class="editor" id="editor">
-      <nav class="section-nav" id="section-nav">
-        <a href="#s-profile">Profile</a>
-        <a href="#s-images">Images</a>
-        <a href="#s-background">Background</a>
-        <a href="#s-music">Music</a>
-        <a href="#s-socials">Socials</a>
-        <a href="#s-links">Links</a>
-        <a href="#s-discord">Discord</a>
-        <a href="#s-look">Look</a>
-        <a href="#s-text">Text</a>
-        <a href="#s-cursor">Cursor</a>
-        <a href="#s-account">Account</a>
-      </nav>
+    <!-- ===== Main column ===== -->
+    <main class="main">
+      <header class="bar">
+        <div class="bar-title">
+          <h1 id="section-title">Profile</h1>
+        </div>
+        <div class="search" id="search">
+          <svg viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 0 1 5.2 10.4l4.4 4.4-1.4 1.4-4.4-4.4A6.5 6.5 0 1 1 10.5 4zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/></svg>
+          <input id="search-input" type="search" placeholder="Search settings…" autocomplete="off" aria-label="Search settings" />
+          <kbd>/</kbd>
+          <ul class="search-results" id="search-results" role="listbox" hidden></ul>
+        </div>
+        <div class="bar-actions">
+          <button class="icon-btn" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
+            <svg viewBox="0 0 24 24"><path d="M12.5 8c-2.7 0-5 1-6.9 2.6L3 8v7h7l-2.7-2.7A7.9 7.9 0 0 1 20 15.5l2-.6C20.8 11 17 8 12.5 8z"/></svg>
+          </button>
+          <button class="icon-btn" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>
+            <svg viewBox="0 0 24 24"><path d="M11.5 8c2.7 0 5 1 6.9 2.6L21 8v7h-7l2.7-2.7A7.9 7.9 0 0 0 4 15.5l-2-.6C3.2 11 7 8 11.5 8z"/></svg>
+          </button>
+          <span class="save-state" id="save-state" role="status"><i></i><span>Saved</span></span>
+        </div>
+      </header>
 
-      <!-- Profile -->
-      <section class="panel" id="s-profile">
-        <h2>Profile</h2>
-        <div class="grid-2">
-          <label class="field"><span>Display name</span><input class="input" data-path="displayName" maxlength="32" /></label>
-          <label class="field"><span>Location</span><input class="input" data-path="location" maxlength="40" placeholder="optional" /></label>
+      <div class="section-head" id="section-head">
+        <p class="section-sub" id="section-sub"></p>
+        <div class="section-tools">
+          <label class="switch" id="adv-switch"><input type="checkbox" id="adv-toggle" /><span></span>Advanced</label>
+          <button class="text-btn" id="reset-section">Reset section</button>
         </div>
-        <label class="field"><span>Bio</span>
-          <textarea class="input" data-path="bio" data-type="lines" rows="3" placeholder="One line per message. They type out one after another."></textarea>
-          <span class="hint">Each line types out on your page, one after another (max 8).</span>
-        </label>
-        <div class="grid-2">
-          <label class="field"><span>Status dot</span>
-            <select class="input" data-path="status">
-              <option value="online">Online</option><option value="idle">Idle</option>
-              <option value="dnd">Do Not Disturb</option><option value="offline">Offline</option>
-            </select>
-            <span class="hint">Discord status replaces this when connected.</span>
-          </label>
-          <label class="field"><span>Footer text</span><input class="input" data-path="footer" maxlength="80" placeholder="optional" /></label>
-        </div>
-      </section>
+      </div>
 
-      <!-- Images -->
-      <section class="panel" id="s-images">
-        <h2>Avatar &amp; banner</h2>
-        <div class="grid-2">
-          <div class="upload-box">
-            <img id="avatar-preview" class="avatar-preview" src="/img/avatar.svg" alt="" />
-            <div class="upload-actions">
-              <span class="label">Avatar</span>
-              <span class="hint">PNG, JPG, GIF or WEBP · max 5 MB</span>
-              <div class="row">
-                <label class="btn btn-ghost btn-sm">Upload<input type="file" accept=".png,.jpg,.jpeg,.gif,.webp" data-upload="avatar" hidden /></label>
-                <button class="btn btn-danger btn-sm" data-remove="avatar" hidden>Remove</button>
-              </div>
-            </div>
-          </div>
-          <div class="upload-box">
-            <div id="banner-preview" class="banner-preview"></div>
-            <div class="upload-actions">
-              <span class="label">Banner</span>
-              <span class="hint">Wide image at the top of your card · max 8 MB</span>
-              <div class="row">
-                <label class="btn btn-ghost btn-sm">Upload<input type="file" accept=".png,.jpg,.jpeg,.gif,.webp" data-upload="banner" hidden /></label>
-                <button class="btn btn-danger btn-sm" data-remove="banner" hidden>Remove</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <p class="hint">If Discord is connected with "use my Discord avatar" on, your Discord picture is shown instead.</p>
-      </section>
-
-      <!-- Background -->
-      <section class="panel" id="s-background">
-        <h2>Background</h2>
-        <div class="bg-types" id="bg-types">
-          <button data-bg="particles">Particles</button>
-          <button data-bg="stars">Warp stars</button>
-          <button data-bg="matrix">Matrix</button>
-          <button data-bg="image">Image</button>
-          <button data-bg="video">Video</button>
-          <button data-bg="none">Solid colour</button>
-        </div>
-        <div class="grid-2">
-          <label class="field"><span>Base colour</span><input type="color" class="color" data-path="background.color" /></label>
-          <div class="field" id="bg-upload-wrap">
-            <span>Image or video</span>
-            <div class="row">
-              <label class="btn btn-ghost btn-sm">Upload file<input type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.mp4,.webm" data-upload="background" hidden /></label>
-              <button class="btn btn-danger btn-sm" data-remove="background" hidden>Remove</button>
-            </div>
-            <span class="hint" id="bg-file-name">Images up to 30 MB, or MP4 / WEBM video</span>
-          </div>
-        </div>
-        <div class="grid-2" id="bg-anim-opts">
-          <label class="field"><span>Animation speed <b data-val="background.speed" data-fmt="x"></b></span>
-            <input type="range" min="0.1" max="3" step="0.1" data-path="background.speed" data-type="number" />
-            <span class="hint">Slide left to slow the effect down.</span>
-          </label>
-          <label class="field"><span>Amount <b data-val="background.density" data-fmt="x"></b></span>
-            <input type="range" min="0.25" max="2" step="0.05" data-path="background.density" data-type="number" />
-            <span class="hint">How many particles, stars or matrix columns.</span>
-          </label>
-          <label class="field"><span>Effect colour</span><input type="color" class="color" data-path="background.effectColor" /></label>
-        </div>
-        <div class="grid-2">
-          <label class="field"><span>Darken background <b data-val="background.dim" data-fmt="%"></b></span>
-            <input type="range" min="0" max="0.9" step="0.05" data-path="background.dim" data-type="number" />
-          </label>
-          <label class="field" id="bg-blur-wrap"><span>Blur image / video <b data-val="background.blur" data-fmt="px"></b></span>
-            <input type="range" min="0" max="20" step="1" data-path="background.blur" data-type="number" />
-          </label>
-        </div>
-      </section>
-
-      <!-- Music -->
-      <section class="panel" id="s-music">
-        <h2>Music</h2>
-        <div class="row wrap">
-          <label class="check"><input type="checkbox" data-path="music.enabled" /> Show music player</label>
-          <label class="check"><input type="checkbox" data-path="music.autoplay" /> Autoplay after "click to enter"</label>
-          <label class="check"><input type="checkbox" data-path="music.shuffle" /> Shuffle</label>
-          <label class="check"><input type="checkbox" data-path="music.loop" /> Repeat the same song</label>
-        </div>
-        <label class="field"><span>Default volume <b id="vol-val"></b></span>
-          <input type="range" min="0" max="1" step="0.05" data-path="music.volume" data-type="number" />
-        </label>
-        <ul class="track-list" id="track-list"></ul>
-        <div class="upload-row">
-          <label class="btn btn-primary btn-sm">+ Upload song<input type="file" accept=".mp3,.ogg,.wav,.m4a" data-upload="music" hidden multiple /></label>
-          <span class="hint">MP3, OGG, WAV or M4A · max 20 MB each · up to 10 songs. Only upload music you have the right to share.</span>
-        </div>
-        <div class="progress" id="upload-progress" hidden><div class="progress-fill"></div><span></span></div>
-      </section>
-
-      <!-- Socials -->
-      <section class="panel" id="s-socials">
-        <h2>Social icons</h2>
-        <ul class="rows" id="social-list"></ul>
-        <button class="btn btn-ghost btn-sm" id="add-social">+ Add social</button>
-      </section>
-
-      <!-- Links -->
-      <section class="panel" id="s-links">
-        <h2>Link buttons</h2>
-        <ul class="rows" id="link-list"></ul>
-        <button class="btn btn-ghost btn-sm" id="add-link">+ Add link</button>
-      </section>
-
-      <!-- Discord -->
-      <section class="panel" id="s-discord">
-        <h2>Discord</h2>
-        <label class="check"><input type="checkbox" data-path="discord.enabled" /> Show my live Discord status</label>
-        <label class="field"><span>Discord user ID</span>
-          <input class="input" data-path="discord.userId" inputmode="numeric" placeholder="e.g. 123456789012345678" maxlength="21" />
-        </label>
-        <div class="row wrap">
-          <label class="check"><input type="checkbox" data-path="discord.useName" /> Use my Discord name</label>
-          <label class="check"><input type="checkbox" data-path="discord.useAvatar" /> Use my Discord avatar</label>
-        </div>
-        <p class="discord-check" id="discord-check"></p>
-        <details class="help">
-          <summary>How do I connect?</summary>
-          <ol>
-            <li>Join the Lanyard server: <b>discord.gg/lanyard</b>. This is required, because it's how your status is read. You can mute it.</li>
-            <li>In Discord, go to Settings → Advanced and turn on <b>Developer Mode</b>.</li>
-            <li>Right-click your own name, choose <b>Copy User ID</b>, and paste it above.</li>
-          </ol>
-        </details>
-        <div class="sub-panel" id="manual-presence">
-          <label class="check"><input type="checkbox" data-path="presence.enabled" /> Show a custom activity card instead</label>
-          <div class="grid-2">
-            <label class="field"><span>Activity title</span><input class="input" data-path="presence.name" maxlength="60" placeholder="Playing a game" /></label>
-            <label class="field"><span>Activity detail</span><input class="input" data-path="presence.activity" maxlength="80" placeholder="In a ranked match" /></label>
-          </div>
-        </div>
-      </section>
-
-      <!-- Look -->
-      <section class="panel" id="s-look">
-        <h2>Look &amp; feel</h2>
-        <div class="grid-2">
-          <label class="field"><span>Accent colour</span><input type="color" class="color" data-path="theme.accent" /></label>
-          <label class="field"><span>Second colour</span><input type="color" class="color" data-path="theme.accent2" /></label>
-          <label class="field"><span>Username effect</span>
-            <select class="input" data-path="theme.usernameEffect">
-              <option value="rainbow">Rainbow</option><option value="gradient">Gradient</option>
-              <option value="glow">Glow</option><option value="none">None</option>
-            </select>
-          </label>
-          <label class="field"><span>Card glow <b data-val="theme.glow" data-fmt="%"></b></span>
-            <input type="range" min="0" max="0.6" step="0.02" data-path="theme.glow" data-type="number" />
-          </label>
-          <label class="field"><span>Card opacity <b id="op-val"></b></span>
-            <input type="range" min="0" max="1" step="0.05" data-path="theme.cardOpacity" data-type="number" />
-          </label>
-          <label class="field"><span>Card blur <b id="blur-val"></b></span>
-            <input type="range" min="0" max="40" step="1" data-path="theme.blur" data-type="number" />
-          </label>
-          <label class="field"><span>Card width <b data-val="theme.cardWidth" data-fmt="px"></b></span>
-            <input type="range" min="360" max="680" step="10" data-path="theme.cardWidth" data-type="number" />
-          </label>
-          <label class="field"><span>Corner roundness <b data-val="theme.radius" data-fmt="px"></b></span>
-            <input type="range" min="0" max="36" step="1" data-path="theme.radius" data-type="number" />
-          </label>
-          <label class="field"><span>Avatar shape</span>
-            <select class="input" data-path="theme.avatarShape">
-              <option value="circle">Circle</option><option value="rounded">Rounded square</option><option value="square">Square</option>
-            </select>
-          </label>
-          <label class="field"><span>Avatar size <b data-val="theme.avatarSize" data-fmt="px"></b></span>
-            <input type="range" min="64" max="160" step="2" data-path="theme.avatarSize" data-type="number" />
-          </label>
-          <label class="field"><span>Social icon colour</span>
-            <select class="input" data-path="theme.iconColor">
-              <option value="white">White</option><option value="accent">Accent colour</option><option value="accent2">Second colour</option>
-            </select>
-          </label>
-          <label class="field"><span>Social icon size <b data-val="theme.iconSize" data-fmt="px"></b></span>
-            <input type="range" min="18" max="40" step="1" data-path="theme.iconSize" data-type="number" />
-          </label>
-        </div>
-        <div class="row wrap">
-          <label class="check"><input type="checkbox" data-path="theme.tilt" /> 3D tilt when the mouse moves</label>
-          <label class="check"><input type="checkbox" data-path="theme.showViews" /> Show view counter</label>
-          <label class="check"><input type="checkbox" data-path="animatedTitle" /> Scrolling tab title</label>
-          <label class="check"><input type="checkbox" data-path="splash.enabled" /> "Click to enter" screen</label>
-        </div>
-        <label class="field" id="tilt-strength-wrap"><span>Tilt strength <b data-val="theme.tiltStrength" data-fmt="deg"></b></span>
-          <input type="range" min="2" max="30" step="1" data-path="theme.tiltStrength" data-type="number" />
-          <span class="hint">How far the card leans as the mouse moves (computers only).</span>
-        </label>
-        <label class="field"><span>Enter screen text</span><input class="input" data-path="splash.text" maxlength="60" /></label>
-      </section>
-
-      <!-- Text -->
-      <section class="panel" id="s-text">
-        <h2>Text</h2>
-        <div class="grid-2">
-          <label class="field"><span>Font</span>
-            <select class="input" data-path="theme.font">
-              <option value="inter">Inter</option><option value="poppins">Poppins</option><option value="outfit">Outfit</option>
-              <option value="space-grotesk">Space Grotesk</option><option value="jetbrains-mono">JetBrains Mono</option><option value="press-start">Press Start (pixel)</option>
-            </select>
-          </label>
-          <label class="field"><span>Text colour</span><input type="color" class="color" data-path="theme.textColor" /></label>
-          <label class="field"><span>Name size <b data-val="theme.nameSize" data-fmt="x"></b></span>
-            <input type="range" min="1.2" max="3.2" step="0.1" data-path="theme.nameSize" data-type="number" />
-          </label>
-          <label class="field" id="type-speed-wrap"><span>Typing speed <b data-val="theme.typeSpeed" data-fmt="x"></b></span>
-            <input type="range" min="0.25" max="3" step="0.25" data-path="theme.typeSpeed" data-type="number" />
-          </label>
-        </div>
-        <label class="check"><input type="checkbox" data-path="theme.typewriter" /> Typewriter effect on the bio</label>
-      </section>
-
-      <!-- Cursor -->
-      <section class="panel" id="s-cursor">
-        <h2>Cursor trail</h2>
-        <div class="grid-2">
-          <label class="field"><span>Trail style</span>
-            <select class="input" data-path="cursor.trail">
-              <option value="sparkle">Sparkles</option><option value="dots">Dots</option><option value="glow">Glow</option>
-              <option value="bubbles">Bubbles</option><option value="none">None</option>
-            </select>
-          </label>
-          <label class="field" data-cursor-opt><span>Trail colour</span>
-            <select class="input" data-path="cursor.colorMode">
-              <option value="theme">Accent + second colour</option><option value="custom">Custom colour</option>
-            </select>
-          </label>
-          <label class="field" data-cursor-opt><span>Size <b data-val="cursor.size" data-fmt="x"></b></span>
-            <input type="range" min="0.5" max="3" step="0.1" data-path="cursor.size" data-type="number" />
-          </label>
-          <label class="field" data-cursor-opt><span>Length <b data-val="cursor.length" data-fmt="x"></b></span>
-            <input type="range" min="0.3" max="3" step="0.1" data-path="cursor.length" data-type="number" />
-          </label>
-          <label class="field" id="cursor-color-wrap"><span>Custom colour</span><input type="color" class="color" data-path="cursor.color" /></label>
-        </div>
-        <label class="check" data-cursor-opt><input type="checkbox" data-path="cursor.touch" /> Show the trail when visitors drag a finger on phones</label>
-      </section>
-
-      <!-- Account -->
-      <section class="panel" id="s-account">
-        <h2>Account</h2>
-        <p class="hint">Signed in as <b id="acct-user"></b> · <span id="acct-email"></span></p>
-        <p class="hint">Storage used: <b id="acct-storage"></b></p>
-        <form class="grid-2" id="pw-form">
-          <label class="field"><span>Current password</span><input class="input" type="password" id="pw-current" autocomplete="current-password" /></label>
-          <label class="field"><span>New password</span><input class="input" type="password" id="pw-next" autocomplete="new-password" minlength="8" /></label>
-          <div class="row"><button class="btn btn-ghost btn-sm" type="submit">Change password</button><span class="hint" id="pw-msg"></span></div>
-        </form>
-      </section>
+      <div class="content" id="content"></div>
     </main>
 
-    <!-- ================= PREVIEW ================= -->
-    <aside class="preview" id="preview">
+    <!-- ===== Live preview ===== -->
+    <aside class="preview" id="preview" aria-label="Live preview">
       <div class="preview-head">
-        <span class="label">Live preview</span>
-        <a class="btn btn-ghost btn-sm" id="open-page" href="#" target="_blank" rel="noopener">Open ↗</a>
+        <span class="preview-label"><i class="live-dot"></i>Live preview</span>
+        <div class="preview-actions">
+          <a class="btn btn-ghost btn-sm" id="open-page" href="#" target="_blank" rel="noopener">Open ↗</a>
+          <button class="icon-btn preview-close" id="preview-close" aria-label="Close preview">✕</button>
+        </div>
       </div>
-      <div class="preview-frame"><iframe id="preview-frame" title="Preview of your page"></iframe></div>
+      <div class="phone"><div class="phone-screen" id="preview-stage"></div></div>
     </aside>
   </div>
 
-  <!-- Save bar -->
-  <div class="savebar" id="savebar">
-    <span id="save-status">All changes saved</span>
-    <div class="row">
-      <button class="btn btn-ghost btn-sm" id="discard" hidden>Discard</button>
-      <button class="btn btn-primary btn-sm" id="save" disabled>Save changes</button>
+  <!-- ===== Phone: bottom tabs + preview button ===== -->
+  <button class="preview-fab" id="preview-open">
+    <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+    Preview
+  </button>
+  <nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <!-- In-page confirm dialog -->
+  <div class="dialog" id="dialog" hidden>
+    <div class="dialog-card" role="alertdialog" aria-modal="true" aria-labelledby="dialog-text">
+      <p id="dialog-text"></p>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" id="dialog-no">Cancel</button>
+        <button class="btn btn-danger" id="dialog-yes">Confirm</button>
+      </div>
     </div>
   </div>
 
-  <div class="toast" id="toast" hidden></div>
-
+  <script src="/js/icons.js"></script>
+  <script src="/js/dash-schema.js"></script>
   <script src="/js/dashboard.js"></script>
 </body>
 </html>

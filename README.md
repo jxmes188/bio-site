@@ -1,93 +1,83 @@
 # bio-site
 
-A bio link platform. People sign up, claim a username, and build their own page
-at `yoursite.com/<username>`, with animated or uploaded backgrounds, their own music,
-social links, link buttons and live Discord status.
+A bio link platform. People sign up with an email code, claim a username, and build
+their own page at `<your domain>/<username>`.
 
-- `/`: sign up / sign in (you claim your username on sign up)
-- `/dashboard`: edit your page with a live preview
-- `/<username>`: anyone's public page, e.g. `/lock`
+- `/`: sign up / sign in (with "forgot password")
+- `/dashboard`: edit your page with an instant live preview
+- `/<username>`: anyone's public page
+- `/admin`: admin panel (admin accounts + admin code only)
 
-Built with Node.js + Express. The database is SQLite, which is built into Node,
-so nothing else needs installing.
+Built with Node.js + Express. The database is SQLite (built into Node 22.13+).
+The domain is never hardcoded: pages use whatever domain they're served on, and
+emails use the `SITE_URL` setting.
 
-## Run it locally (VS Code)
-
-Needs **Node.js 22.13 or newer** (`node --version`).
+## Run it locally
 
 ```powershell
 npm install        # first time only
-npm run dev        # starts the server and restarts it when you edit server files
+npm run dev        # http://localhost:3000 (restarts when server files change)
 ```
 
-Open http://localhost:3000, sign up, and you're taken to your dashboard.
-Your page is at http://localhost:3000/yourname.
-
-Stop the server with `Ctrl + C` in the terminal.
+Without `RESEND_API_KEY`, emails (sign-up / reset codes) are printed in the terminal instead of sent.
+Set `ADMIN_CODE` (and `ADMIN_USERNAMES`) locally to try the admin panel.
 
 ## Project layout
 
 ```
 server/
-  index.js      routes: pages, sign up/in, profile API, uploads
-  db.js         SQLite tables (users, sessions, files, view_log)
-  auth.js       password hashing, login sessions, rate limiting
-  profile.js    profile defaults + validation of everything users save
-  admin.js      command-line admin tools (badges, delete user)
+  index.js        routes: pages, sign-up/in, profile, uploads, analytics, click tracking
+  profile.js      page settings: defaults, upgrade of old saved pages (v1 → v2), validation
+  features.js     premium switch (everything is free unless PREMIUM_ENABLED=true)
+  auth.js         password hashing, sessions, rate limits
+  db.js           SQLite tables + automatic upgrades
+  mail.js         emails through Resend
+  admin-panel.js  /admin and its API
+  admin.js        command-line admin tools
 public/
-  index.html    homepage: sign up / sign in
-  dashboard.html, js/dashboard.js, css/dashboard.css
-  profile.html  the public profile page template
-  js/loader.js  loads a user's settings, then the page scripts
-  js/profile.js, background.js, cursor.js, discord.js, icons.js
-  css/app.css (homepage + dashboard), css/profile.css (profile pages)
-data/           the database (created automatically, NOT in git)
-uploads/        everything users upload (created automatically, NOT in git)
+  index.html      homepage (sign up / sign in)
+  dashboard.html  dashboard; js/dashboard.js (engine), js/dash-schema.js (every setting + templates)
+  profile.html    the public page; js/loader.js, profile.js, background.js, cursor.js, discord.js
+  admin.html      admin panel (styles: css/panel.css + css/admin.css)
 ```
 
-## What users can customise
+### Adding a new page setting
+1. Add its default to `defaultProfile()` and validation to `sanitizeProfile()` in `server/profile.js`.
+2. Add one entry to `SETTINGS` in `public/js/dash-schema.js` (section, label, type, `adv: true` for Advanced).
+   The dashboard control, search, "Reset section" and premium tag come from that entry automatically.
+3. Use it on the page in `public/js/profile.js` / `background.js` / `css/profile.css`.
 
-Display name, bio lines, location, status, avatar, banner, background
-(particles / warp stars / matrix / uploaded image / uploaded video / solid colour),
-music (up to 10 songs, reorder, rename), social icons, link buttons, live Discord
-presence (via [Lanyard](https://github.com/Phineas/lanyard)), accent colours,
-username effect, card opacity and blur, cursor trail, 3D tilt and the click-to-enter screen.
+## Premium (later)
 
-Limits: avatar 5 MB, banner 8 MB, background 30 MB, songs 20 MB each,
-150 MB total per user. SVG and HTML uploads are blocked for security.
+Everything is free now. To make a setting premium without rewriting anything:
+1. Set `PREMIUM_ENABLED=true` on Railway.
+2. List setting paths in `PREMIUM_PATHS` in `server/features.js`, or in the
+   `PREMIUM_FEATURES` Railway setting, e.g. `effects.bg,cursor.image,theme.nameFont`.
+3. A user's `plan` column set to `premium` unlocks them.
+Free users keep the default value for premium settings; the dashboard shows a "PRO" tag.
+
+## Railway settings
+
+| Variable | Needed | What it does |
+|---|---|---|
+| `SITE_URL` | yes | e.g. `https://yourdomain.com`, used in emails |
+| `RESEND_API_KEY` | yes | sends sign-up and password-reset codes |
+| `MAIL_FROM` | yes | e.g. `yourdomain.com <no-reply@yourdomain.com>` |
+| `ADMIN_CODE` | for admin | the code that unlocks `/admin` |
+| `ADMIN_USERNAMES` | for admin | comma-separated admin accounts (default `lock`) |
+| `DATA_DIR`, `UPLOAD_DIR` | yes on Railway | folders on the storage volume (`/data/db`, `/data/uploads`) |
+| `VIEW_SECRET` | recommended | fixed random string so view counting stays stable across restarts |
+| `PREMIUM_ENABLED`, `PREMIUM_FEATURES` | optional | see Premium above |
+| `PORT` | set by Railway | |
 
 ## Admin commands
 
 ```powershell
-npm run admin -- list                         # all users
-npm run admin -- badges lock verified,crown   # give badges (none = clear)
-npm run admin -- delete someuser              # delete a user and their files
+npm run admin -- list
+npm run admin -- badges lock "Owner,Staff"
+npm run admin -- delete someuser
 ```
-
-Badges: `verified`, `crown` (Owner), `code` (Developer), `star` (Early Supporter),
-`bolt`, `fire`, `heart`. Only admins can give badges; users can't set their own.
-
-## Putting it online at your domain
-
-GitHub Pages **can't** run this, because it only hosts static files and this needs a server.
-You need a host that runs Node.js **and keeps files on disk** (for the database and uploads):
-
-- **A VPS** (Hetzner, DigitalOcean, Vultr…): most control, about $4–6/month.
-  Run it with `pm2` or a systemd service behind Caddy/Nginx for HTTPS.
-- **Railway / Render / Fly.io**: easier. Attach a persistent volume and set
-  `DATA_DIR` and `UPLOAD_DIR` to folders on that volume, or every redeploy wipes your users.
-
-Then point your domain's DNS at the host.
-
-### Environment variables
-
-| Variable      | Default        | What it does                                        |
-|---------------|----------------|-----------------------------------------------------|
-| `PORT`        | `3000`         | Port to listen on                                   |
-| `DATA_DIR`    | `./data`       | Where the SQLite database is stored                 |
-| `UPLOAD_DIR`  | `./uploads`    | Where uploaded files are stored                     |
-| `VIEW_SECRET` | random per run | Set a fixed random string so view counting stays stable across restarts |
 
 ## Backups
 
-Everything lives in two folders: `data/` and `uploads/`. Copy both to back up the site.
+Everything lives in `data/` (database) and `uploads/` (files). Copy both to back up.

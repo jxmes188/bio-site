@@ -124,6 +124,33 @@ if (!userCols.includes("verify_sent_at")) {
 if (!userCols.includes("banned")) {
   db.exec("ALTER TABLE users ADD COLUMN banned INTEGER NOT NULL DEFAULT 0");
 }
+// Dashboard look (light/dark, accent) chosen by the user
+if (!userCols.includes("prefs")) {
+  db.exec("ALTER TABLE users ADD COLUMN prefs TEXT NOT NULL DEFAULT '{}'");
+}
+// "free" or "premium" (everything is free unless PREMIUM_ENABLED=true, see features.js)
+if (!userCols.includes("plan")) {
+  db.exec("ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'");
+}
+
+// ---------- Analytics ----------
+// Where a view came from (site name only, e.g. "tiktok.com")
+const viewCols = db.prepare("PRAGMA table_info(view_log)").all().map(c => c.name);
+if (!viewCols.includes("ref")) {
+  db.exec("ALTER TABLE view_log ADD COLUMN ref TEXT NOT NULL DEFAULT ''");
+}
+// One row per visitor, per day, per link clicked (so spam-clicking counts once)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS click_log (
+    user_id      INTEGER NOT NULL,
+    visitor_hash TEXT NOT NULL,
+    day          TEXT NOT NULL,
+    target       TEXT NOT NULL,
+    PRIMARY KEY (user_id, visitor_hash, day, target)
+  );
+  CREATE INDEX IF NOT EXISTS idx_click_user_day ON click_log(user_id, day);
+  CREATE INDEX IF NOT EXISTS idx_view_user_day ON view_log(user_id, day);
+`);
 
 // ---------- Badge catalog (editable from the admin page) ----------
 if (db.prepare("SELECT COUNT(*) n FROM badges").get().n === 0) {

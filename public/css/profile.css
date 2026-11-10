@@ -45,7 +45,7 @@ svg { fill: currentColor; }
   z-index: 1; pointer-events: none;
   background:
     linear-gradient(rgba(0,0,0,var(--bg-dim)), rgba(0,0,0,var(--bg-dim))),
-    radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,.55) 100%);
+    var(--vignette, radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,.55) 100%));
 }
 .cursor-canvas { z-index: 50; pointer-events: none; }
 
@@ -54,8 +54,8 @@ svg { fill: currentColor; }
   position: fixed; inset: 0; z-index: 100;
   display: grid; place-items: center;
   background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(var(--splash-blur, 20px));
+  -webkit-backdrop-filter: blur(var(--splash-blur, 20px));
   cursor: pointer;
   transition: opacity .8s ease, visibility .8s;
 }
@@ -88,7 +88,7 @@ svg { fill: currentColor; }
   padding: 28px 26px 22px;
   border-radius: var(--radius);
   background: var(--card-bg);
-  border: 1px solid var(--border);
+  border: var(--card-border-w, 1px) solid var(--card-border-c, var(--border));
   backdrop-filter: blur(var(--blur));
   -webkit-backdrop-filter: blur(var(--blur));
   box-shadow: 0 20px 60px rgba(0,0,0,.5), 0 0 40px var(--card-glow);
@@ -238,7 +238,7 @@ svg { fill: currentColor; }
 .links { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
 .link-btn {
   display: flex; align-items: center; gap: 12px;
-  padding: 13px 16px; border-radius: 12px;
+  padding: 13px 16px; border-radius: var(--btn-radius, 12px);
   background: rgba(255,255,255,.05);
   border: 1px solid var(--border);
   font-weight: 600; font-size: .92rem;
@@ -348,3 +348,67 @@ svg { fill: currentColor; }
   transition: color .2s, border-color .2s;
 }
 .claim-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* =========================================================
+   Extra options (v2). Defaults keep the Classic look unchanged.
+   ========================================================= */
+
+/* Name font */
+.username { font-family: var(--name-font, inherit); }
+
+/* Layout: "bare" = no card box, content floats on the background */
+.layout-bare .card {
+  background: transparent; border-color: transparent; box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.layout-bare .card-glare { display: none; }
+
+/* Alignment */
+.align-left .profile-top { align-items: flex-start; text-align: left; }
+.align-left .badges, .align-left .socials, .align-left .meta { justify-content: flex-start; }
+
+/* Username: sparkle */
+.fx-sparkle { position: relative; display: inline-block; text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 70%, transparent); }
+.fx-sparkle::before, .fx-sparkle::after {
+  content: "✦"; position: absolute; font-size: .45em; color: var(--accent);
+  text-shadow: 0 0 8px var(--accent); animation: twinkle 1.8s ease-in-out infinite;
+}
+.fx-sparkle::before { top: -.25em; right: -.6em; }
+.fx-sparkle::after { bottom: -.1em; left: -.7em; color: var(--accent2); animation-delay: .9s; }
+@keyframes twinkle { 0%, 100% { opacity: .2; transform: scale(.6) rotate(0); } 50% { opacity: 1; transform: scale(1.1) rotate(45deg); } }
+
+/* Username: glitch */
+.fx-glitch { position: relative; display: inline-block; }
+.fx-glitch::before, .fx-glitch::after {
+  content: attr(data-text); position: absolute; inset: 0; pointer-events: none;
+}
+.fx-glitch::before { color: var(--accent); transform: translate(-2px, 0); clip-path: inset(0 0 55% 0); animation: glitch1 2.4s infinite steps(1); }
+.fx-glitch::after  { color: var(--accent2); transform: translate(2px, 0); clip-path: inset(55% 0 0 0); animation: glitch2 2.4s infinite steps(1); }
+@keyframes glitch1 { 0%, 88%, 100% { transform: translate(-2px, 0); } 90% { transform: translate(-6px, -1px); } 94% { transform: translate(4px, 1px); } }
+@keyframes glitch2 { 0%, 88%, 100% { transform: translate(2px, 0); } 91% { transform: translate(6px, 1px); } 95% { transform: translate(-4px, -1px); } }
+
+/* Social icon styles */
+.icons-circle .social, .icons-square .social { background: rgba(255,255,255,.07); border: 1px solid var(--border); }
+.icons-circle .social { border-radius: 50%; }
+.icons-square .social { border-radius: 10px; }
+
+/* Link button styles */
+.buttons-solid .link-btn { background: var(--accent); border-color: transparent; color: #fff; }
+.buttons-solid .link-btn:hover { background: var(--accent); filter: brightness(1.1); }
+.buttons-solid .link-ico, .buttons-solid .arrow { color: #fff; stroke: #fff; }
+.buttons-outline .link-btn { background: transparent; border: 1.5px solid var(--accent); }
+.buttons-outline .link-btn:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+
+/* Entrance animations (fade = Classic) */
+.enter-slide .app { transform: translateY(70px); }
+.enter-zoom .app { transform: scale(.82); }
+.enter-none .app { transition: none; opacity: 1; transform: none; }
+.enter-slide .app.show, .enter-zoom .app.show { transform: none; }
+
+/* Music player: compact */
+.player-compact .player { padding: 8px 10px; gap: 10px; }
+.player-compact .progress, .player-compact .times { display: none; }
+.player-compact .play-btn { width: 34px; height: 34px; }
+
+/* Live preview inside the dashboard: never block clicks with a splash */
+.is-preview .claim-btn { display: none; }

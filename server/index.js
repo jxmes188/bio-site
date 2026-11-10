@@ -14,6 +14,7 @@ const { db, DATA_DIR } = require("./db");
 const auth = require("./auth");
 const { defaultProfile, sanitizeProfile, BADGE_ICONS } = require("./profile");
 const mail = require("./mail");
+const { applyPlan, featureInfo } = require("./features");
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, "..", "public");
@@ -95,7 +96,17 @@ const ownFileSet = userId => new Set(listFiles(userId).map(fileUrl));
 function readProfile(user) {
   let p;
   try { p = JSON.parse(user.profile); } catch { p = {}; }
-  return sanitizeProfile({ ...defaultProfile(user.username), ...p }, user.username, ownFileSet(user.id));
+  const clean = sanitizeProfile(p, user.username, ownFileSet(user.id));
+  return applyPlan(clean, defaultProfile(user.username), user.plan);
+}
+function readPrefs(user) {
+  let p = {};
+  try { p = JSON.parse(user.prefs || "{}"); } catch {}
+  return {
+    theme: ["light", "dark", "system"].includes(p.theme) ? p.theme : "dark",
+    accent: /^#[0-9a-f]{6}$/i.test(p.accent || "") ? p.accent.toLowerCase() : "#a855f7",
+    advanced: !!p.advanced
+  };
 }
 function saveProfile(userId, profile) {
   db.prepare("UPDATE users SET profile = ? WHERE id = ?").run(JSON.stringify(profile), userId);
@@ -151,6 +162,10 @@ function meResponse(user) {
     badges: resolveBadges(user.badges),
     isAdmin: ADMINS.has(user.username),
     profile: readProfile(user),
+    defaults: defaultProfile(user.username),
+    prefs: readPrefs(user),
+    features: featureInfo(user.plan),
+    createdAt: user.created_at,
     files: listFiles(user.id).map(f => ({ id: f.id, kind: f.kind, url: fileUrl(f), name: f.original_name, size: f.size })),
     quota: QUOTA_BYTES
   };
@@ -335,11 +350,61 @@ app.post("/api/logout", (req, res) => {
 // ---------- Account / profile API ----------
 app.get("/api/me", auth.requireUser, (req, res) => res.json(meResponse(getUserById(req.user.id))));
 
-app.put("/api/me/profile", auth.requireUser, (req, res) => {
+const saveLimiter = auth.rateLimit({ windowMs: 60e3, max: 120 }); // autosave-friendly, but not unlimited
+
+app.put("/api/me/profile", auth.requireUser, saveLimiter, (req, res) => {
   const user = getUserById(req.user.id);
-  const profile = sanitizeProfile(req.body, user.username, ownFileSet(user.id));
-  saveProfile(user.id, profile);
+  const clean = sanitizeProfile(req.body, user.username, ownFileSet(user.id));
+  saveProfile(user.id, applyPlan(clean, defaultProfile(user.username), user.plan));
   res.json(meResponse(getUserById(user.id)));
+});
+
+// Dashboard look: light / dark / system + accent colour
+app.put("/api/me/prefs", auth.requireUser, saveLimiter, (req, res) => {
+  const user = getUserById(req.user.id);
+  const merged = { ...readPrefs(user), ...(req.body || {}) };
+  db.prepare("UPDATE users SET prefs = ? WHERE id = ?").run(JSON.stringify(readPrefs({ prefs: JSON.stringify(merged) })), user.id);
+  res.json({ prefs: readPrefs(getUserById(user.id)) });
+});
+
+// Delete your own account (needs your password)
+app.delete("/api/me", auth.requireUser, authLimiter, (req, res) => {
+  const user = getUserById(req.user.id);
+  if (!auth.verifyPassword(String((req.body || {}).password || ""), user.pass_hash))
+    return res.status(400).json({ error: "Password is wrong" });
+  if (ADMINS.has(user.username)) return res.status(400).json({ error: "Admin accounts can't be deleted from here" });
+  db.prepare("DELETE FROM users WHERE id = ?").run(user.id);
+  db.prepare("DELETE FROM view_log WHERE user_id = ?").run(user.id);
+  db.prepare("DELETE FROM click_log WHERE user_id = ?").run(user.id);
+  fs.rmSync(path.join(UPLOAD_DIR, String(user.id)), { recursive: true, force: true });
+  auth.destroySession(req, res);
+  res.json({ ok: true });
+});
+
+// ---------- Analytics (your own page) ----------
+app.get("/api/me/analytics", auth.requireUser, (req, res) => {
+  const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+  const user = getUserById(req.user.id);
+  const dayList = [];
+  for (let i = days - 1; i >= 0; i--) dayList.push(new Date(Date.now() - i * 864e5).toISOString().slice(0, 10));
+  const from = dayList[0];
+
+  const viewsByDay = Object.fromEntries(db.prepare("SELECT day, COUNT(*) n FROM view_log WHERE user_id = ? AND day >= ? GROUP BY day").all(user.id, from).map(r => [r.day, r.n]));
+  const clicksByDay = Object.fromEntries(db.prepare("SELECT day, COUNT(*) n FROM click_log WHERE user_id = ? AND day >= ? GROUP BY day").all(user.id, from).map(r => [r.day, r.n]));
+  const profile = readProfile(user);
+  const labels = {};
+  for (const s of profile.socials) labels[s.url] = s.label;
+  for (const l of profile.links) labels[l.url] = l.title;
+
+  res.json({
+    days,
+    totalViews: user.views,
+    series: dayList.map(d => ({ day: d, views: viewsByDay[d] || 0, clicks: clicksByDay[d] || 0 })),
+    links: db.prepare("SELECT target, COUNT(*) n FROM click_log WHERE user_id = ? AND day >= ? GROUP BY target ORDER BY n DESC LIMIT 15")
+      .all(user.id, from).map(r => ({ url: r.target, label: labels[r.target] || r.target, clicks: r.n })),
+    referrers: db.prepare("SELECT ref, COUNT(*) n FROM view_log WHERE user_id = ? AND day >= ? GROUP BY ref ORDER BY n DESC LIMIT 10")
+      .all(user.id, from).map(r => ({ source: r.ref || "Direct / unknown", views: r.n }))
+  });
 });
 
 app.post("/api/me/password", auth.requireUser, authLimiter, (req, res) => {
@@ -359,8 +424,33 @@ const KINDS = {
   avatar:     { maxMB: 5,  exts: IMG,              single: true },
   banner:     { maxMB: 8,  exts: IMG,              single: true },
   background: { maxMB: 30, exts: [...IMG, ...VID], single: true },
+  cursor:     { maxMB: 1,  exts: [".png", ".gif", ".webp"], single: true },
   music:      { maxMB: 20, exts: AUD,              single: false, maxCount: 10 }
 };
+
+/** Check the file's first bytes really match its extension (stops renamed files). */
+function realTypeMatches(filePath, ext) {
+  let b;
+  try {
+    const fd = fs.openSync(filePath, "r");
+    b = Buffer.alloc(16);
+    fs.readSync(fd, b, 0, 16, 0);
+    fs.closeSync(fd);
+  } catch { return false; }
+  const ascii = (s, e) => b.toString("latin1", s, e);
+  switch (ext) {
+    case ".png": return b[0] === 0x89 && ascii(1, 4) === "PNG";
+    case ".jpg": case ".jpeg": return b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+    case ".gif": return ascii(0, 4) === "GIF8";
+    case ".webp": return ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP";
+    case ".mp4": case ".m4a": return ascii(4, 8) === "ftyp";
+    case ".webm": return b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3;
+    case ".mp3": return ascii(0, 3) === "ID3" || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0);
+    case ".ogg": return ascii(0, 4) === "OggS";
+    case ".wav": return ascii(0, 4) === "RIFF" && ascii(8, 12) === "WAVE";
+    default: return false;
+  }
+}
 
 const uploaders = Object.fromEntries(Object.entries(KINDS).map(([kind, k]) => [kind, multer({
   storage: multer.diskStorage({
@@ -395,6 +485,10 @@ app.post("/api/me/upload/:kind", auth.requireUser, (req, res, next) => {
   uploaders[kind](req, res, err => {
     if (err) return next(err);
     if (!req.file) return res.status(400).json({ error: "No file received" });
+    if (!realTypeMatches(req.file.path, path.extname(req.file.filename))) {
+      fs.promises.unlink(req.file.path).catch(() => {});
+      return res.status(400).json({ error: "That file isn't really the type its name says. Try exporting it again." });
+    }
 
     const userId = req.user.id;
     const used = db.prepare("SELECT COALESCE(SUM(size),0) s FROM files WHERE user_id = ?").get(userId).s;
@@ -419,6 +513,7 @@ app.post("/api/me/upload/:kind", auth.requireUser, (req, res, next) => {
     const url = fileUrl(file);
     if (kind === "avatar") profile.avatar = url;
     if (kind === "banner") profile.banner = url;
+    if (kind === "cursor") profile.cursor.image = url;
     if (kind === "background") {
       profile.background.url = url;
       profile.background.type = VID.includes(path.extname(file.filename)) ? "video" : "image";
@@ -439,7 +534,7 @@ app.delete("/api/me/files/:id", auth.requireUser, (req, res) => {
   const user = getUserById(req.user.id);
   const profile = readProfile(user);
   if (f.kind === "background" && !profile.background.url && ["image", "video"].includes(profile.background.type))
-    profile.background.type = "particles";
+    profile.background.type = "color";
   saveProfile(user.id, profile);
   res.json(meResponse(getUserById(user.id)));
 });
@@ -454,7 +549,10 @@ app.get("/api/profile/:username", (req, res) => {
   if (req.query.preview !== "1") {
     const day = new Date().toISOString().slice(0, 10);
     const visitor = auth.sha256(`${req.ip}|${req.get("user-agent") || ""}|${VIEW_SECRET}`);
-    const r = db.prepare("INSERT OR IGNORE INTO view_log (user_id, visitor_hash, day) VALUES (?, ?, ?)").run(user.id, visitor, day);
+    // Where they came from: just the site name, e.g. "tiktok.com" (sent by the page from document.referrer)
+    let ref = String(req.query.ref || "").toLowerCase().replace(/^www\./, "");
+    if (!/^[a-z0-9.-]{3,100}$/.test(ref) || !ref.includes(".") || ref === siteHost(req)) ref = "";
+    const r = db.prepare("INSERT OR IGNORE INTO view_log (user_id, visitor_hash, day, ref) VALUES (?, ?, ?, ?)").run(user.id, visitor, day, ref);
     if (r.changes) db.prepare("UPDATE users SET views = views + 1 WHERE id = ?").run(user.id);
   }
 
@@ -466,6 +564,21 @@ app.get("/api/profile/:username", (req, res) => {
     badges: resolveBadges(fresh.badges),
     profile: readProfile(fresh)
   });
+});
+
+// Link click tracking (sent by the profile page). Only counts links that are really on that page,
+// once per visitor per link per day, so it can't be spammed.
+const trackLimiter = auth.rateLimit({ windowMs: 60e3, max: 60 });
+app.post("/api/track/click", trackLimiter, (req, res) => {
+  const { u, t } = req.body || {};
+  const user = typeof u === "string" && getUserByName(u);
+  if (!user || !user.email_verified || user.banned || typeof t !== "string") return res.status(204).end();
+  const p = readProfile(user);
+  if (![...p.socials.map(s => s.url), ...p.links.map(l => l.url)].includes(t)) return res.status(204).end();
+  const day = new Date().toISOString().slice(0, 10);
+  const visitor = auth.sha256(`${req.ip}|${req.get("user-agent") || ""}|${VIEW_SECRET}`);
+  db.prepare("INSERT OR IGNORE INTO click_log (user_id, visitor_hash, day, target) VALUES (?, ?, ?, ?)").run(user.id, visitor, day, t);
+  res.status(204).end();
 });
 
 // ---------- Admin ----------

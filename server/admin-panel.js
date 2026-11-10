@@ -67,6 +67,7 @@ module.exports = function mountAdmin(app, d) {
   function deleteUserCompletely(u) {
     db.prepare("DELETE FROM users WHERE id = ?").run(u.id);   // sessions, files rows etc. cascade
     db.prepare("DELETE FROM view_log WHERE user_id = ?").run(u.id);
+    db.prepare("DELETE FROM click_log WHERE user_id = ?").run(u.id);
     fs.rmSync(path.join(d.UPLOAD_DIR, String(u.id)), { recursive: true, force: true });
   }
 
@@ -230,7 +231,7 @@ module.exports = function mountAdmin(app, d) {
     if (!f) return res.status(404).json({ error: "File not found" });
     d.removeFile(f);
     const p = d.readProfile(userRow(u.id)); // drops references to the deleted file
-    if (f.kind === "background" && !p.background.url && ["image", "video"].includes(p.background.type)) p.background.type = "particles";
+    if (f.kind === "background" && !p.background.url && ["image", "video"].includes(p.background.type)) p.background.type = "color";
     d.saveProfile(u.id, p);
     log(req, "delete file", u.username, f.original_name);
     res.json({ ok: true });
